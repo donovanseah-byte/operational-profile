@@ -28,7 +28,7 @@ from profile_processing import (
 )
 
 
-st.set_page_config(page_title="Vessel Performance Profile", page_icon="ðŸš¢", layout="wide")
+st.set_page_config(page_title="Vessel Performance Profile", page_icon="🚢", layout="wide")
 
 
 def uploaded_bytes(uploaded_file) -> bytes:
@@ -52,7 +52,7 @@ def report_card(uploaded_file, report_type: str) -> ParsedReport | None:
     report = reports[report_type]
 
     st.success(
-        f"Detected {REPORT_NAMES[report_type]} â€¢ sheet: {report.sheet_name} â€¢ "
+        f"Detected {REPORT_NAMES[report_type]} • sheet: {report.sheet_name} • "
         f"confidence: {report.confidence:.0%}"
     )
     if report.missing:
@@ -102,7 +102,7 @@ def dataframe_csv(frame: pd.DataFrame, include_index: bool = False) -> bytes:
 def _profile_percent_text(value) -> str:
     if pd.isna(value):
         return ""
-    return "â€”" if abs(float(value)) < 0.0005 else f"{float(value):.3f}%"
+    return "—" if abs(float(value)) < 0.0005 else f"{float(value):.3f}%"
 
 
 def styled_profile_table(frame: pd.DataFrame):
@@ -161,7 +161,7 @@ def render_readable_profile_table(profile, x_label: str, blocks: list[tuple[str,
 
     with block_tab:
         st.caption(
-            "Zero cells are shown as â€”. Darker red means a larger share of total propelling hours. "
+            "Zero cells are shown as —. Darker red means a larger share of total propelling hours. "
             "The Total column is the row total across all bands."
         )
         for title, columns in blocks:
@@ -225,7 +225,7 @@ def excel_monthly_display(monthly: pd.DataFrame) -> pd.DataFrame:
             "TTL[h]": monthly["available_hours"],
             "Prop. [h]": monthly["propelling_hours"],
             "Working Ratio[%]": monthly["working_ratio_pct"],
-            "Sea Water Temp[Â°C]": monthly["avg_sea_temp_excel"],
+            "Sea Water Temp[°C]": monthly["avg_sea_temp_excel"],
             "Vs[kts]": monthly["avg_speed_knots"],
         }
     )
@@ -239,7 +239,7 @@ def show_excel_monthly_table(monthly: pd.DataFrame) -> pd.DataFrame:
                 "TTL[h]": "{:.1f}",
                 "Prop. [h]": "{:.1f}",
                 "Working Ratio[%]": "{:.0f}%",
-                "Sea Water Temp[Â°C]": "{:.6f}",
+                "Sea Water Temp[°C]": "{:.6f}",
                 "Vs[kts]": "{:.5f}",
             },
             na_rep="#DIV/0!",
@@ -258,7 +258,7 @@ def plot_excel_monthly_graphs(table: pd.DataFrame, key_prefix: str):
     )
     chart_specs = [
         ("Working Ratio[%]", "Working Ratio [%]", "Working ratio (%)"),
-        ("Sea Water Temp[Â°C]", "Sea Water Temp. [Â°C]", "Temperature (Â°C)"),
+        ("Sea Water Temp[°C]", "Sea Water Temp. [°C]", "Temperature (°C)"),
         ("Vs[kts]", "Vs [kts]", "Speed (kn)"),
     ]
     for column, title, y_title in chart_specs:
@@ -292,7 +292,7 @@ def excel_data_sum_display(data_sum: pd.DataFrame, imo_number: str) -> pd.DataFr
             "Duration [h]": data_sum["duration_hours"],
             "Vs": data_sum["speed_knots"],
             "Mid Draft": data_sum["draft_m"],
-            "Sea Water Temp. [Â°C]": data_sum["data_sum_sea_temp"],
+            "Sea Water Temp. [°C]": data_sum["data_sum_sea_temp"],
             "YEAR": data_sum["year"],
             "MONTH": data_sum["month"],
             "DAY": data_sum["day"],
@@ -361,7 +361,7 @@ def render_excel_profile_details(
         "TTL [h]": overall["total_hours"],
         "Prop. [h]": overall["propelling_hours"],
         "Working Ratio [%]": overall["working_ratio_pct"],
-        "Sea Water Temp [Â°C]": overall["avg_sea_temp_excel"],
+        "Sea Water Temp [°C]": overall["avg_sea_temp_excel"],
         "Vs [kts]": overall["avg_speed_knots"],
     }
     if is_power_profile:
@@ -373,7 +373,7 @@ def render_excel_profile_details(
         "TTL [h]": "{:.0f}",
         "Prop. [h]": "{:.1f}",
         "Working Ratio [%]": "{:.2f}%",
-        "Sea Water Temp [Â°C]": "{:.6f}",
+        "Sea Water Temp [°C]": "{:.6f}",
         "Vs [kts]": "{:.5f}",
     }
     if is_power_profile:
@@ -442,7 +442,7 @@ def render_excel_profile_details(
             hide_index=True,
             use_container_width=True,
         )
-        st.code("VLSFO-equivalent MT = actual MT Ã— fuel LCV Ã· 40.5")
+        st.code("VLSFO-equivalent MT = actual MT × fuel LCV ÷ 40.5")
 
     equivalent_consumption = fuel["total_vlsfo_equivalent_mt"]
     saving_rate = ps3_percent / 100
@@ -605,7 +605,7 @@ def render_payback_roi(
     basis_columns = st.columns(4)
     basis_columns[0].metric("Analysis duration", f"{analysis_days:,.1f} days")
     basis_columns[1].metric("Period fuel saving", f"{period_fuel_saving_mt:,.3f} MT")
-    basis_columns[2].metric("Annualisation factor", f"{annualisation_factor:,.4f}Ã—")
+    basis_columns[2].metric("Annualisation factor", f"{annualisation_factor:,.4f}×")
     basis_columns[3].metric(
         "Calculated annual fuel saving",
         f"{calculated_annual_fuel_saving_mt:,.3f} MT/year",
@@ -815,13 +815,13 @@ def render_payback_roi(
 
     with st.expander("Show formulas and assumptions"):
         st.code(
-            "Period fuel saving = VLSFO-equivalent consumption Ã— PS3%\n"
-            "Annual fuel saving = period fuel saving Ã— 8,760 Ã· analysis hours\n"
-            "Annual gross saving = annual fuel saving Ã— VLSFO reference price\n"
+            "Period fuel saving = VLSFO-equivalent consumption × PS3%\n"
+            "Annual fuel saving = period fuel saving × 8,760 ÷ analysis hours\n"
+            "Annual gross saving = annual fuel saving × VLSFO reference price\n"
             "Annual net saving = gross saving + avoided CO2 cost - additional OPEX\n"
             "Payback = time until cumulative cash flow reaches US$0\n"
-            "Year 1 ROI = Year 1 net saving Ã· CAPEX Ã— 100\n"
-            "Project ROI = (total net benefits - CAPEX) Ã· CAPEX Ã— 100"
+            "Year 1 ROI = Year 1 net saving ÷ CAPEX × 100\n"
+            "Project ROI = (total net benefits - CAPEX) ÷ CAPEX × 100"
         )
         st.caption(
             "The result inherits the app's VLSFO-equivalent fuel conversion and PS3 saving assumption. "
@@ -832,7 +832,7 @@ def render_payback_roi(
 st.title("Vessel Performance Profile")
 st.caption(
     "Upload Noon, Departure and Arrival reports. Files are identified from their two-row column "
-    "titlesâ€”not fixed Excel column positionsâ€”and the approved Excel profile method is reproduced automatically."
+    "titles—not fixed Excel column positions—and the approved Excel profile method is reproduced automatically."
 )
 
 with st.expander("How file validation works"):
@@ -876,9 +876,9 @@ with st.sidebar:
     st.header("Locked methodology")
     st.info(
         "Excel Replication Mode\n\n"
-        "Draft: 7â€“16 m\n\n"
-        "Speed: 9â€“24 kn\n\n"
-        "M/E output: 0â€“22,000 kW\n\n"
+        "Draft: 7–16 m\n\n"
+        "Speed: 9–24 kn\n\n"
+        "M/E output: 0–22,000 kW\n\n"
         "Arrival duration: excluded"
     )
     known_imo = {"NYK FUTAGO": "9487524"}
@@ -950,7 +950,7 @@ with tabs[0]:
                     "Average": temperature_audit["average_value"],
                     "Minimum": temperature_audit["minimum_value"],
                     "Maximum": temperature_audit["maximum_value"],
-                    "Outside -2 to 40 Â°C": temperature_audit["out_of_range_count"],
+                    "Outside -2 to 40 °C": temperature_audit["out_of_range_count"],
                 }
             ]
         )
@@ -967,7 +967,7 @@ with tabs[0]:
             use_container_width=True,
         )
         st.code(
-            f"{temperature_audit['sum_value']:,.1f} Ã· "
+            f"{temperature_audit['sum_value']:,.1f} ÷ "
             f"{temperature_audit['numeric_count']:,} = "
             f"{temperature_audit['average_value']:.6f}"
         )
@@ -999,7 +999,7 @@ with tabs[0]:
     outside_power = power_profile.total_hours - power_profile.hours.to_numpy().sum()
     if outside_power > 0.001:
         st.warning(
-            f"{outside_power:,.1f} denominator hours fall outside the fixed 0â€“<23,000 kW table. "
+            f"{outside_power:,.1f} denominator hours fall outside the fixed 0–<23,000 kW table. "
             "They remain in the denominator, matching the Excel formula."
         )
     high_working_ratio = monthly[monthly["working_ratio_pct"] > 100.5] if not monthly.empty else pd.DataFrame()
@@ -1008,12 +1008,12 @@ with tabs[0]:
 
 with tabs[1]:
     st.caption(
-        "Locked Excel method: draft rows start at 7â€“16 m and speed columns start at 9â€“24 kn. "
-        "A label such as 9 means the 9â€“<10 kn band. Each cell uses the Excel SUMIFS denominator logic."
+        "Locked Excel method: draft rows start at 7–16 m and speed columns start at 9–24 kn. "
+        "A label such as 9 means the 9–<10 kn band. Each cell uses the Excel SUMIFS denominator logic."
     )
     heatmap(
         speed_profile,
-        "Speedâ€“Draft Operating Profile",
+        "Speed–Draft Operating Profile",
         "Average speed (kn)",
         "speed-draft-heatmap",
     )
@@ -1021,8 +1021,8 @@ with tabs[1]:
         speed_profile,
         "Speed start [kn]",
         [
-            ("Speed columns 9â€“16 kn", [str(value) for value in range(9, 17)]),
-            ("Speed columns 17â€“24 kn", [str(value) for value in range(17, 25)]),
+            ("Speed columns 9–16 kn", [str(value) for value in range(9, 17)]),
+            ("Speed columns 17–24 kn", [str(value) for value in range(17, 25)]),
         ],
     )
     st.download_button(
@@ -1033,7 +1033,7 @@ with tabs[1]:
     )
     render_excel_profile_details(
         speed_profile,
-        "Speedâ€“Draft Profile",
+        "Speed–Draft Profile",
         detected_vessel,
         imo_number,
         overall,
@@ -1045,13 +1045,13 @@ with tabs[1]:
 
 with tabs[2]:
     st.caption(
-        "Locked Excel method: draft rows start at 7â€“16 m and M/E output columns start at "
-        "0â€“22,000 kW. A label such as 1000 means the 1,000â€“<2,000 kW band. "
+        "Locked Excel method: draft rows start at 7–16 m and M/E output columns start at "
+        "0–22,000 kW. A label such as 1000 means the 1,000–<2,000 kW band. "
         "Values above the displayed range remain in the denominator exactly as in Excel."
     )
     heatmap(
         power_profile,
-        "M/E Outputâ€“Draft Operating Profile",
+        "M/E Output–Draft Operating Profile",
         "M/E output (kW)",
         "me-output-draft-heatmap",
     )
@@ -1059,9 +1059,9 @@ with tabs[2]:
         power_profile,
         "M/E output start [kW]",
         [
-            ("M/E output columns 0â€“7,000 kW", [str(value) for value in range(0, 8_000, 1_000)]),
-            ("M/E output columns 8,000â€“15,000 kW", [str(value) for value in range(8_000, 16_000, 1_000)]),
-            ("M/E output columns 16,000â€“22,000 kW", [str(value) for value in range(16_000, 23_000, 1_000)]),
+            ("M/E output columns 0–7,000 kW", [str(value) for value in range(0, 8_000, 1_000)]),
+            ("M/E output columns 8,000–15,000 kW", [str(value) for value in range(8_000, 16_000, 1_000)]),
+            ("M/E output columns 16,000–22,000 kW", [str(value) for value in range(16_000, 23_000, 1_000)]),
         ],
     )
     st.download_button(
@@ -1072,7 +1072,7 @@ with tabs[2]:
     )
     render_excel_profile_details(
         power_profile,
-        "M/E Outputâ€“Draft Profile",
+        "M/E Output–Draft Profile",
         detected_vessel,
         imo_number,
         overall,
