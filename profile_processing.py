@@ -22,7 +22,7 @@ EXCEL_POWER_EDGES = np.arange(0.0, 24_000.0, 1_000.0)
 
 # Lower-calorific-value factors used by the controlled Excel FOC method.
 # Every fuel mass is converted to a VLSFO-equivalent mass before PS3 savings
-# are calculated: equivalent MT = actual MT × fuel LCV / 40.5.
+# are calculated: equivalent MT = actual MT x fuel LCV / 40.5.
 FUEL_REFERENCE_GRADE = "VLSFO"
 FUEL_GRADE_FIELDS = {
     "VLSFO": "foc_vlsfo",
@@ -607,7 +607,7 @@ def _lookup_draft(
             ratio = (timestamp - dep_row["timestamp"]) / (arr_row["timestamp"] - dep_row["timestamp"])
             ratio = float(np.clip(ratio, 0.0, 1.0))
             value = dep_row["draft_m"] + ratio * (arr_row["draft_m"] - dep_row["draft_m"])
-            return float(value), "Interpolated departure→arrival"
+            return float(value), "Interpolated departure to arrival"
         return float(dep_row["draft_m"]), "Departure draft"
     if dep_row is not None:
         return float(dep_row["draft_m"]), "Departure draft (arrival unavailable)"
@@ -621,15 +621,15 @@ def _reason(row: pd.Series, profile: str) -> str:
     if pd.isna(row["timestamp"]):
         reasons.append("missing time")
     if pd.isna(row["duration_hours"]) or not (0 < row["duration_hours"] <= 72):
-        reasons.append("duration outside 0–72 h")
+        reasons.append("duration outside 0-72 h")
     if pd.isna(row["draft_m"]) or not (0 < row["draft_m"] <= 30):
-        reasons.append("draft outside 0–30 m")
+        reasons.append("draft outside 0-30 m")
     if profile == "speed" and (pd.isna(row["speed_knots"]) or not (0 < row["speed_knots"] <= 40)):
-        reasons.append("speed outside 0–40 kn")
+        reasons.append("speed outside 0-40 kn")
     if profile == "power" and (
         pd.isna(row["me_output_kw"]) or not (0 < row["me_output_kw"] <= 100_000)
     ):
-        reasons.append("M/E output outside 0–100,000 kW")
+        reasons.append("M/E output outside 0-100,000 kW")
     return "; ".join(reasons)
 
 
@@ -1210,7 +1210,7 @@ def sea_temperature_audit(data_sum: pd.DataFrame, noon: ParsedReport) -> dict[st
         )
     if out_of_range_count:
         quality_warnings.append(
-            f"{out_of_range_count} seawater-temperature readings are outside -2 to 40 °C."
+            f"{out_of_range_count} seawater-temperature readings are outside -2 to 40 deg C."
         )
     if values.empty:
         message = "Internal Data_sum Sea Water Temp contains no numeric readings."
