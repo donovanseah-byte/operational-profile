@@ -479,21 +479,30 @@ def render_excel_profile_details(
         "D/G, boiler, cylinder oil and stopping-condition fuel remain excluded, matching the Profile scope."
     )
 
-
 def build_payback_analysis(
     capex_usd: float,
     annual_gross_fuel_saving_usd: float,
     annual_additional_opex_usd: float,
     annual_avoided_co2_cost_usd: float,
-    project_life_years: int,
+    charter_duration_years: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build simple-payback, ROI and cumulative cash-flow scenario tables."""
-    scenarios: list[tuple[str, int | None]] = [("Baseline (No levy)", None)]
+    """Build payback and cumulative cash-flow tables over the charter period."""
+
+    scenarios: list[tuple[str, int | None]] = [
+        ("Baseline (No levy)", None)
+    ]
+
     if annual_avoided_co2_cost_usd > 0:
         scenarios.extend(
             [
-                ("CO2 levy after 1-year delay", 2),
-                ("CO2 levy after 2-year delay", 3),
+                (
+                    "Avoided CO2 levy benefit after 1-year delay",
+                    2,
+                ),
+                (
+                    "Avoided CO2 levy benefit after 2-year delay",
+                    3,
+                ),
             ]
         )
 
@@ -502,12 +511,13 @@ def build_payback_analysis(
 
     for scenario_name, levy_start_year in scenarios:
         cumulative = -capex_usd
+
         cashflow_rows.append(
             {
                 "Scenario": scenario_name,
                 "Year": 0,
                 "Gross fuel saving [US$]": 0.0,
-                "Avoided CO2 cost [US$]": 0.0,
+                "Avoided CO2 levy benefit [US$]": 0.0,
                 "Additional OPEX [US$]": 0.0,
                 "Net cash flow [US$]": 0.0,
                 "Cumulative cash flow [US$]": cumulative,
@@ -515,22 +525,31 @@ def build_payback_analysis(
         )
 
         payback_years: float | None = None
-        project_net_benefit = 0.0
+        charter_net_benefit = 0.0
 
-        # Use a long horizon so payback can still be reported when it occurs
-        # after the selected graph/project-life period.
-        calculation_horizon = max(project_life_years, 200)
+        # A longer calculation horizon allows the app to report
+        # payback even when it occurs after the charter ends.
+        calculation_horizon = max(
+            charter_duration_years,
+            200,
+        )
+
         for year in range(1, calculation_horizon + 1):
             avoided_co2 = (
                 annual_avoided_co2_cost_usd
-                if levy_start_year is not None and year >= levy_start_year
+                if (
+                    levy_start_year is not None
+                    and year >= levy_start_year
+                )
                 else 0.0
             )
+
             net_cash_flow = (
                 annual_gross_fuel_saving_usd
                 + avoided_co2
                 - annual_additional_opex_usd
             )
+
             previous_cumulative = cumulative
             cumulative += net_cash_flow
 
@@ -539,86 +558,168 @@ def build_payback_analysis(
                 and net_cash_flow > 0
                 and previous_cumulative < 0 <= cumulative
             ):
-                payback_years = (year - 1) + (-previous_cumulative / net_cash_flow)
+                payback_years = (
+                    year - 1
+                ) + (
+                    -previous_cumulative / net_cash_flow
+                )
 
-            if year <= project_life_years:
-                project_net_benefit += net_cash_flow
+            if year <= charter_duration_years:
+                charter_net_benefit += net_cash_flow
+
                 cashflow_rows.append(
                     {
                         "Scenario": scenario_name,
                         "Year": year,
-                        "Gross fuel saving [US$]": annual_gross_fuel_saving_usd,
-                        "Avoided CO2 cost [US$]": avoided_co2,
-                        "Additional OPEX [US$]": annual_additional_opex_usd,
-                        "Net cash flow [US$]": net_cash_flow,
-                        "Cumulative cash flow [US$]": cumulative,
+                        "Gross fuel saving [US$]":
+                            annual_gross_fuel_saving_usd,
+                        "Avoided CO2 levy benefit [US$]":
+                            avoided_co2,
+                        "Additional OPEX [US$]":
+                            annual_additional_opex_usd,
+                        "Net cash flow [US$]":
+                            net_cash_flow,
+                        "Cumulative cash flow [US$]":
+                            cumulative,
                     }
                 )
 
-        year_one_net_saving = annual_gross_fuel_saving_usd - annual_additional_opex_usd
+        year_one_net_saving = (
+            annual_gross_fuel_saving_usd
+            - annual_additional_opex_usd
+        )
+
+        charter_end_cash_flow = (
+            charter_net_benefit
+            - capex_usd
+        )
+
+        payback_within_charter = (
+            payback_years is not None
+            and payback_years <= charter_duration_years
+        )
+
         summary_rows.append(
             {
                 "Scenario": scenario_name,
-                "Year 1 net saving [US$]": year_one_net_saving,
-                "Payback period [years]": payback_years,
-                "Year 1 ROI [%]": year_one_net_saving / capex_usd * 100,
-                f"{project_life_years}-year project ROI [%]": (
-                    (project_net_benefit - capex_usd) / capex_usd * 100
-                ),
+                "Year 1 net saving [US$]":
+                    year_one_net_saving,
+                "Payback period [years]":
+                    payback_years,
+                "Payback within charter":
+                    "Yes" if payback_within_charter else "No",
+                "Cost saving after payback [US$]":
+                    max(charter_end_cash_flow, 0.0),
+                "Unrecovered CAPEX at charter end [US$]":
+                    max(-charter_end_cash_flow, 0.0),
             }
         )
 
-    return pd.DataFrame(cashflow_rows), pd.DataFrame(summary_rows)
+    return (
+        pd.DataFrame(cashflow_rows),
+        pd.DataFrame(summary_rows),
+    )
 
 
-def render_payback_roi(
+def render_payback_analysis(
     overall: dict,
     fuel: dict,
     ps3_percent: float,
     fuel_price: float,
 ):
-    """Render the Payback & ROI tab from the existing Profile fuel result."""
-    st.subheader("Fuel-saving Payback & ROI")
+    """Render the payback analysis tab."""
+
+    st.subheader("Fuel-saving Payback Analysis")
+
     st.caption(
-        "The app annualises the PS3 fuel saving calculated over the uploaded report period. "
-        "CAPEX and other commercial assumptions must be entered manually."
+        "The app annualises the PS3 fuel saving calculated "
+        "over the uploaded report period. CAPEX and other "
+        "commercial assumptions must be entered manually."
     )
 
-    analysis_hours = float(overall.get("total_hours", float("nan")))
-    equivalent_consumption_mt = float(fuel.get("total_vlsfo_equivalent_mt", 0.0))
+    analysis_hours = float(
+        overall.get("total_hours", float("nan"))
+    )
 
-    if not math.isfinite(analysis_hours) or analysis_hours <= 0:
-        st.error("Payback cannot be calculated because the analysis duration is invalid.")
+    equivalent_consumption_mt = float(
+        fuel.get("total_vlsfo_equivalent_mt", 0.0)
+    )
+
+    if (
+        not math.isfinite(analysis_hours)
+        or analysis_hours <= 0
+    ):
+        st.error(
+            "Payback cannot be calculated because the "
+            "analysis duration is invalid."
+        )
         return
+
     if not 0 <= ps3_percent <= 100:
-        st.error("PS3 saving percentage must be between 0% and 100%.")
+        st.error(
+            "PS3 saving percentage must be between "
+            "0% and 100%."
+        )
         return
+
     if fuel_price < 0:
         st.error("Fuel price cannot be negative.")
         return
 
     analysis_days = analysis_hours / 24
-    period_fuel_saving_mt = equivalent_consumption_mt * ps3_percent / 100
-    annualisation_factor = (365 * 24) / analysis_hours
-    calculated_annual_fuel_saving_mt = period_fuel_saving_mt * annualisation_factor
+
+    period_fuel_saving_mt = (
+        equivalent_consumption_mt
+        * ps3_percent
+        / 100
+    )
+
+    annualisation_factor = (
+        365 * 24
+    ) / analysis_hours
+
+    calculated_annual_fuel_saving_mt = (
+        period_fuel_saving_mt
+        * annualisation_factor
+    )
 
     basis_columns = st.columns(4)
-    basis_columns[0].metric("Analysis duration", f"{analysis_days:,.1f} days")
-    basis_columns[1].metric("Period fuel saving", f"{period_fuel_saving_mt:,.3f} MT")
-    basis_columns[2].metric("Annualisation factor", f"{annualisation_factor:,.4f}×")
+
+    basis_columns[0].metric(
+        "Analysis duration",
+        f"{analysis_days:,.1f} days",
+    )
+
+    basis_columns[1].metric(
+        "Period fuel saving",
+        f"{period_fuel_saving_mt:,.3f} MT",
+    )
+
+    basis_columns[2].metric(
+        "Annualisation factor",
+        f"{annualisation_factor:,.4f}x",
+    )
+
     basis_columns[3].metric(
         "Calculated annual fuel saving",
-        f"{calculated_annual_fuel_saving_mt:,.3f} MT/year",
+        (
+            f"{calculated_annual_fuel_saving_mt:,.3f} "
+            "MT/year"
+        ),
     )
 
     if analysis_days < 180:
         st.warning(
-            "The uploaded period is shorter than 180 days. Annualising a short period can produce "
-            "an unstable payback estimate, especially if vessel operations are seasonal."
+            "The uploaded period is shorter than 180 days. "
+            "Annualising a short period can produce an "
+            "unstable payback estimate, especially if "
+            "vessel operations are seasonal."
         )
 
     st.markdown("**Financial assumptions**")
+
     input_columns = st.columns(3)
+
     with input_columns[0]:
         capex_amount = st.number_input(
             "Project CAPEX",
@@ -627,12 +728,14 @@ def render_payback_roi(
             step=1_000.0,
             key="payback-capex-amount",
         )
+
     with input_columns[1]:
         capex_currency = st.selectbox(
             "CAPEX currency",
             ["EUR", "USD"],
             key="payback-capex-currency",
         )
+
     with input_columns[2]:
         if capex_currency == "EUR":
             exchange_rate = st.number_input(
@@ -645,6 +748,7 @@ def render_payback_roi(
             )
         else:
             exchange_rate = 1.0
+
             st.text_input(
                 "Exchange rate",
                 value="Not required for USD CAPEX",
@@ -653,15 +757,22 @@ def render_payback_roi(
             )
 
     option_columns = st.columns(3)
+
     with option_columns[0]:
-        project_life_years = st.number_input(
-            "Project life [years]",
+        charter_duration_years = st.number_input(
+            "Charter duration [years]",
             min_value=1,
             max_value=50,
             value=10,
             step=1,
-            key="payback-project-life",
+            key="payback-charter-duration",
+            help=(
+                "Enter the period during which the investor "
+                "receives the fuel-saving benefit. Savings "
+                "after the charter ends are not counted."
+            ),
         )
+
     with option_columns[1]:
         annual_additional_opex_usd = st.number_input(
             "Additional annual OPEX [US$]",
@@ -669,92 +780,177 @@ def render_payback_roi(
             value=0.0,
             step=1_000.0,
             key="payback-annual-opex",
-            help="Extra yearly maintenance, servicing or operating cost caused by the project.",
+            help=(
+                "Extra yearly maintenance, servicing or "
+                "operating cost caused by the project."
+            ),
         )
+
     with option_columns[2]:
         use_manual_saving = st.checkbox(
             "Override annual fuel saving",
             value=False,
             key="payback-manual-saving-toggle",
             help=(
-                "Use this only when an approved annual fuel-saving estimate should replace "
-                "the annualised PS3 result."
+                "Use this only when an approved annual "
+                "fuel-saving estimate should replace the "
+                "annualised PS3 result."
             ),
         )
 
     if use_manual_saving:
         annual_fuel_saving_mt = st.number_input(
-            "Approved annual fuel saving [VLSFO-equivalent MT/year]",
+            (
+                "Approved annual fuel saving "
+                "[VLSFO-equivalent MT/year]"
+            ),
             min_value=0.0,
-            value=float(calculated_annual_fuel_saving_mt),
+            value=float(
+                calculated_annual_fuel_saving_mt
+            ),
             step=1.0,
             key="payback-manual-annual-saving",
         )
     else:
-        annual_fuel_saving_mt = calculated_annual_fuel_saving_mt
+        annual_fuel_saving_mt = (
+            calculated_annual_fuel_saving_mt
+        )
 
     include_co2_scenarios = st.checkbox(
-        "Include CO2 levy scenarios",
+        "Include avoided CO2 levy benefit scenarios",
         value=False,
         key="payback-include-co2",
     )
+
     if include_co2_scenarios:
         annual_avoided_co2_cost_usd = st.number_input(
-            "Additional avoided CO2 cost [US$/year]",
+            "Avoided CO2 levy benefit [US$/year]",
             min_value=0.0,
             value=54_197.0,
             step=1_000.0,
             key="payback-avoided-co2",
             help=(
-                "This is additional to fuel-cost saving. The example workbook uses "
-                "$54,197, because $122,909 - $68,712 = $54,197."
+                "Enter only the portion of the levy avoided "
+                "because the project reduces emissions, not "
+                "the company's total CO2 levy. The example "
+                "workbook uses $54,197 because "
+                "$122,909 - $68,712 = $54,197."
             ),
         )
     else:
         annual_avoided_co2_cost_usd = 0.0
 
-    capex_usd = capex_amount * exchange_rate
-    annual_gross_saving_usd = annual_fuel_saving_mt * fuel_price
-    annual_baseline_net_saving_usd = annual_gross_saving_usd - annual_additional_opex_usd
+    capex_usd = (
+        capex_amount
+        * exchange_rate
+    )
+
+    annual_gross_saving_usd = (
+        annual_fuel_saving_mt
+        * fuel_price
+    )
+
+    annual_baseline_net_saving_usd = (
+        annual_gross_saving_usd
+        - annual_additional_opex_usd
+    )
 
     if capex_usd <= 0:
-        st.error("Project CAPEX must be greater than zero.")
+        st.error(
+            "Project CAPEX must be greater than zero."
+        )
         return
+
     if annual_baseline_net_saving_usd <= 0:
         st.error(
-            "Annual net saving is zero or negative. The baseline project cannot achieve payback "
+            "Annual net saving is zero or negative. "
+            "The baseline project cannot achieve payback "
             "with the current assumptions."
         )
 
-    cashflow, scenario_summary = build_payback_analysis(
-        capex_usd=capex_usd,
-        annual_gross_fuel_saving_usd=annual_gross_saving_usd,
-        annual_additional_opex_usd=annual_additional_opex_usd,
-        annual_avoided_co2_cost_usd=annual_avoided_co2_cost_usd,
-        project_life_years=int(project_life_years),
+    cashflow, scenario_summary = (
+        build_payback_analysis(
+            capex_usd=capex_usd,
+            annual_gross_fuel_saving_usd=(
+                annual_gross_saving_usd
+            ),
+            annual_additional_opex_usd=(
+                annual_additional_opex_usd
+            ),
+            annual_avoided_co2_cost_usd=(
+                annual_avoided_co2_cost_usd
+            ),
+            charter_duration_years=int(
+                charter_duration_years
+            ),
+        )
     )
 
     baseline = scenario_summary.iloc[0]
-    baseline_payback = baseline["Payback period [years]"]
+
+    baseline_payback = baseline[
+        "Payback period [years]"
+    ]
+
     result_columns = st.columns(4)
-    result_columns[0].metric("CAPEX", f"US$ {capex_usd:,.0f}")
-    result_columns[1].metric(
-        "Annual gross fuel saving", f"US$ {annual_gross_saving_usd:,.0f}"
+
+    result_columns[0].metric(
+        "CAPEX",
+        f"US$ {capex_usd:,.0f}",
     )
+
+    result_columns[1].metric(
+        "Annual gross fuel saving",
+        f"US$ {annual_gross_saving_usd:,.0f}",
+    )
+
     result_columns[2].metric(
         "Baseline payback",
-        f"{baseline_payback:.2f} years" if pd.notna(baseline_payback) else "No payback",
+        (
+            f"{baseline_payback:.2f} years"
+            if pd.notna(baseline_payback)
+            else "No payback"
+        ),
     )
-    result_columns[3].metric("Year 1 ROI", f"{baseline['Year 1 ROI [%]']:.2f}%")
+
+    result_columns[3].metric(
+        "Cost saving after payback",
+        (
+            "US$ "
+            f"{baseline['Cost saving after payback [US$]']:,.0f}"
+        ),
+        help=(
+            "Net saving remaining after CAPEX recovery "
+            f"by the end of the "
+            f"{int(charter_duration_years)}-year charter."
+        ),
+    )
+
+    if baseline["Payback within charter"] == "No":
+        st.warning(
+            "The baseline project does not recover its "
+            f"CAPEX within the "
+            f"{int(charter_duration_years)}-year charter. "
+            "Unrecovered CAPEX at charter end: US$ "
+            f"{baseline['Unrecovered CAPEX at charter end [US$]']:,.0f}."
+        )
 
     st.markdown("**Scenario results**")
+
     st.dataframe(
         scenario_summary.style.format(
             {
-                "Year 1 net saving [US$]": "US$ {:,.0f}",
-                "Payback period [years]": "{:.2f}",
-                "Year 1 ROI [%]": "{:.2f}%",
-                f"{int(project_life_years)}-year project ROI [%]": "{:.2f}%",
+                "Year 1 net saving [US$]":
+                    "US$ {:,.0f}",
+                "Payback period [years]":
+                    "{:.2f}",
+                "Cost saving after payback [US$]":
+                    "US$ {:,.0f}",
+                (
+                    "Unrecovered CAPEX at "
+                    "charter end [US$]"
+                ):
+                    "US$ {:,.0f}",
             },
             na_rep="No payback",
         ),
@@ -762,15 +958,22 @@ def render_payback_roi(
         use_container_width=True,
     )
 
-    st.markdown("**Cumulative project cash flow**")
+    st.markdown(
+        "**Cumulative project cash flow**"
+    )
+
     figure = px.line(
         cashflow,
         x="Year",
         y="Cumulative cash flow [US$]",
         color="Scenario",
         markers=True,
-        title="Cumulative Cash Flow and Break-even",
+        title=(
+            "Cumulative Cash Flow Across the "
+            "Charter and Break-even"
+        ),
     )
+
     figure.add_hline(
         y=0,
         line_dash="dash",
@@ -778,33 +981,48 @@ def render_payback_roi(
         annotation_text="Break-even",
         annotation_position="top left",
     )
+
     figure.update_layout(
-        xaxis_title="Project year",
+        xaxis_title="Charter year",
         yaxis_title="Cumulative cash flow [US$]",
         hovermode="x unified",
         height=480,
-        margin={"l": 20, "r": 20, "t": 60, "b": 20},
+        margin={
+            "l": 20,
+            "r": 20,
+            "t": 60,
+            "b": 20,
+        },
     )
+
     st.plotly_chart(
         figure,
         use_container_width=True,
         key="payback-cumulative-cashflow-chart",
     )
 
-    with st.expander("Show yearly cash-flow calculation"):
+    with st.expander(
+        "Show yearly cash-flow calculation"
+    ):
         st.dataframe(
             cashflow.style.format(
                 {
-                    "Gross fuel saving [US$]": "{:,.2f}",
-                    "Avoided CO2 cost [US$]": "{:,.2f}",
-                    "Additional OPEX [US$]": "{:,.2f}",
-                    "Net cash flow [US$]": "{:,.2f}",
-                    "Cumulative cash flow [US$]": "{:,.2f}",
+                    "Gross fuel saving [US$]":
+                        "{:,.2f}",
+                    "Avoided CO2 levy benefit [US$]":
+                        "{:,.2f}",
+                    "Additional OPEX [US$]":
+                        "{:,.2f}",
+                    "Net cash flow [US$]":
+                        "{:,.2f}",
+                    "Cumulative cash flow [US$]":
+                        "{:,.2f}",
                 }
             ),
             hide_index=True,
             use_container_width=True,
         )
+
         st.download_button(
             "Download payback cash flow CSV",
             dataframe_csv(cashflow),
@@ -813,21 +1031,32 @@ def render_payback_roi(
             key="payback-cashflow-download",
         )
 
-    with st.expander("Show formulas and assumptions"):
+    with st.expander(
+        "Show formulas and assumptions"
+    ):
         st.code(
-            "Period fuel saving = VLSFO-equivalent consumption × PS3%\n"
-            "Annual fuel saving = period fuel saving × 8,760 ÷ analysis hours\n"
-            "Annual gross saving = annual fuel saving × VLSFO reference price\n"
-            "Annual net saving = gross saving + avoided CO2 cost - additional OPEX\n"
-            "Payback = time until cumulative cash flow reaches US$0\n"
-            "Year 1 ROI = Year 1 net saving ÷ CAPEX × 100\n"
-            "Project ROI = (total net benefits - CAPEX) ÷ CAPEX × 100"
-        )
-        st.caption(
-            "The result inherits the app's VLSFO-equivalent fuel conversion and PS3 saving assumption. "
-            "It is an estimate, not a measured retrofit saving."
+            "Period fuel saving = "
+            "VLSFO-equivalent consumption x PS3%\n"
+            "Annual fuel saving = period fuel saving "
+            "x 8,760 / analysis hours\n"
+            "Annual gross saving = annual fuel saving "
+            "x VLSFO reference price\n"
+            "Annual net saving = gross saving + "
+            "avoided CO2 levy benefit - additional OPEX\n"
+            "Payback = time until cumulative cash flow "
+            "reaches US$0\n"
+            "Cost saving after payback = "
+            "max(total charter net savings - CAPEX, 0)\n"
+            "Unrecovered CAPEX = "
+            "max(CAPEX - total charter net savings, 0)"
         )
 
+        st.caption(
+            "The result inherits the app's "
+            "VLSFO-equivalent fuel conversion and "
+            "PS3 saving assumption. It is an estimate, "
+            "not a measured retrofit saving."
+        )
 
 st.title("Vessel Performance Profile")
 st.caption(
@@ -923,7 +1152,7 @@ tabs = st.tabs(
         "Profile: Speed vs Draft",
         "Profile: M/E Output vs Draft",
         "Monthly analysis",
-        "Payback & ROI",
+        "Payback analysis",,
         "Processed data",
     ]
 )
@@ -1100,7 +1329,7 @@ with tabs[3]:
         )
 
 with tabs[4]:
-    render_payback_roi(
+    render_payback_analysis(
         overall=overall,
         fuel=fuel,
         ps3_percent=ps3_percent,
