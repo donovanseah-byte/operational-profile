@@ -28,7 +28,7 @@ from profile_processing import (
 )
 
 
-st.set_page_config(page_title="Vessel Performance Profile", page_icon="🚢", layout="wide")
+st.set_page_config(page_title="Vessel Operating Profile & Payback Analysis", layout="wide")
 
 
 def uploaded_bytes(uploaded_file) -> bytes:
@@ -52,7 +52,7 @@ def report_card(uploaded_file, report_type: str) -> ParsedReport | None:
     report = reports[report_type]
 
     st.success(
-        f"Detected {REPORT_NAMES[report_type]} • sheet: {report.sheet_name} • "
+        f"Detected {REPORT_NAMES[report_type]} | sheet: {report.sheet_name} | "
         f"confidence: {report.confidence:.0%}"
     )
     if report.missing:
@@ -78,7 +78,8 @@ def heatmap(profile, title: str, x_title: str, chart_key: str):
             colorscale=[[0, "#ffffff"], [0.25, "#fee2e2"], [1, "#b91c1c"]],
             colorbar={"title": "% of hours"},
             hovertemplate=(
-                f"{x_title}: %{{x}}<br>Draft: %{{y}} m<br>Share: %{{z:.3f}}%<extra></extra>"
+                f"{x_title}: %{{x}}<br>Draft band start: %{{y}} m<br>"
+                "Share of eligible propelling hours: %{z:.3f}%<extra></extra>"
             ),
             text=text,
             texttemplate="%{text}" if values.size <= 300 else None,
@@ -87,7 +88,7 @@ def heatmap(profile, title: str, x_title: str, chart_key: str):
     figure.update_layout(
         title=title,
         xaxis_title=x_title,
-        yaxis_title="Mean draft (m)",
+        yaxis_title="Draft band start [m]",
         height=max(430, 34 * len(profile.percent.index)),
         margin={"l": 20, "r": 20, "t": 60, "b": 20},
     )
@@ -102,13 +103,13 @@ def dataframe_csv(frame: pd.DataFrame, include_index: bool = False) -> bytes:
 def _profile_percent_text(value) -> str:
     if pd.isna(value):
         return ""
-    return "—" if abs(float(value)) < 0.0005 else f"{float(value):.3f}%"
+    return "-" if abs(float(value)) < 0.0005 else f"{float(value):.3f}%"
 
 
 def styled_profile_table(frame: pd.DataFrame):
     """Apply compact, dependency-free colouring while keeping values numeric."""
     table = frame.copy()
-    table.index.name = "Draft start [m]"
+    table.index.name = "Draft band start [m]"
     body_rows = [index for index in table.index if index != "Total"]
     body_columns = [column for column in table.columns if column != "Total"]
     body_max = float(table.loc[body_rows, body_columns].max().max()) if body_rows else 0.0
@@ -154,14 +155,14 @@ def styled_profile_table(frame: pd.DataFrame):
 def render_readable_profile_table(profile, x_label: str, blocks: list[tuple[str, list[str]]]):
     """Offer readable blocks first, with full-matrix and non-zero audit views."""
     table = profile_with_totals(profile.percent)
-    table.index.name = "Draft start [m]"
+    table.index.name = "Draft band start [m]"
     block_tab, full_tab, detail_tab = st.tabs(
-        ["Readable blocks", "Full matrix", "Non-zero cells"]
+        ["Grouped bands", "Complete matrix", "Used operating bands"]
     )
 
     with block_tab:
         st.caption(
-            "Zero cells are shown as —. Darker red means a larger share of total propelling hours. "
+            "Zero cells are shown as -. Darker red means a larger share of total propelling hours. "
             "The Total column is the row total across all bands."
         )
         for title, columns in blocks:
@@ -187,27 +188,33 @@ def render_readable_profile_table(profile, x_label: str, blocks: list[tuple[str,
     with detail_tab:
         detail = pd.DataFrame(
             {
-                "Share [%]": profile.percent.stack(),
-                "Propelling hours": profile.hours.stack(),
+                "Share of eligible propelling hours [%]": profile.percent.stack(),
+                "Eligible propelling hours [h]": profile.hours.stack(),
             }
         ).reset_index()
-        detail.columns = ["Draft start [m]", x_label, "Share [%]", "Propelling hours"]
-        detail = detail[detail["Share [%]"].gt(0)].reset_index(drop=True)
-        detail_max = float(detail["Share [%]"].max()) if not detail.empty else 0.001
+        detail.columns = [
+            "Draft band start [m]",
+            x_label,
+            "Share of eligible propelling hours [%]",
+            "Eligible propelling hours [h]",
+        ]
+        share_column = "Share of eligible propelling hours [%]"
+        detail = detail[detail[share_column].gt(0)].reset_index(drop=True)
+        detail_max = float(detail[share_column].max()) if not detail.empty else 0.001
         st.dataframe(
             detail,
             hide_index=True,
             use_container_width=True,
             height=460,
             column_config={
-                "Share [%]": st.column_config.ProgressColumn(
-                    "Share [%]",
+                share_column: st.column_config.ProgressColumn(
+                    share_column,
                     format="%.3f%%",
                     min_value=0.0,
                     max_value=max(detail_max, 0.001),
                 ),
-                "Propelling hours": st.column_config.NumberColumn(
-                    "Propelling hours", format="%.1f h"
+                "Eligible propelling hours [h]": st.column_config.NumberColumn(
+                    "Eligible propelling hours [h]", format="%.1f h"
                 ),
             },
         )
@@ -220,13 +227,13 @@ def excel_monthly_display(monthly: pd.DataFrame) -> pd.DataFrame:
         {
             "YEAR": monthly["month"].dt.year,
             "MONTH": monthly["month"].dt.month,
-            "Data_S": monthly["data_start"].dt.strftime("%d/%m/%Y"),
-            "Date_E": monthly["data_end"].dt.strftime("%d/%m/%Y"),
+            "Period Start": monthly["data_start"].dt.strftime("%d/%m/%Y"),
+            "Period End": monthly["data_end"].dt.strftime("%d/%m/%Y"),
             "TTL[h]": monthly["available_hours"],
-            "Prop. [h]": monthly["propelling_hours"],
-            "Working Ratio[%]": monthly["working_ratio_pct"],
-            "Sea Water Temp[°C]": monthly["avg_sea_temp_excel"],
-            "Vs[kts]": monthly["avg_speed_knots"],
+            "Reported Propelling Hours [h]": monthly["propelling_hours"],
+            "Reported Propelling Ratio [%]": monthly["working_ratio_pct"],
+            "Mean Reported Sea-Water Temperature [deg C]": monthly["avg_sea_temp_excel"],
+            "Mean Reported Speed [kn]": monthly["avg_speed_knots"],
         }
     )
 
@@ -237,10 +244,10 @@ def show_excel_monthly_table(monthly: pd.DataFrame) -> pd.DataFrame:
         table.style.format(
             {
                 "TTL[h]": "{:.1f}",
-                "Prop. [h]": "{:.1f}",
-                "Working Ratio[%]": "{:.0f}%",
-                "Sea Water Temp[°C]": "{:.6f}",
-                "Vs[kts]": "{:.5f}",
+                "Reported Propelling Hours [h]": "{:.1f}",
+                "Reported Propelling Ratio [%]": "{:.0f}%",
+                "Mean Reported Sea-Water Temperature [deg C]": "{:.6f}",
+                "Mean Reported Speed [kn]": "{:.5f}",
             },
             na_rep="#DIV/0!",
         ),
@@ -257,9 +264,21 @@ def plot_excel_monthly_graphs(table: pd.DataFrame, key_prefix: str):
         lambda row: f"{int(row['YEAR'])}/{int(row['MONTH'])}", axis=1
     )
     chart_specs = [
-        ("Working Ratio[%]", "Working Ratio [%]", "Working ratio (%)"),
-        ("Sea Water Temp[°C]", "Sea Water Temp. [°C]", "Temperature (°C)"),
-        ("Vs[kts]", "Vs [kts]", "Speed (kn)"),
+        (
+            "Reported Propelling Ratio [%]",
+            "Monthly Reported Propelling Ratio",
+            "Reported propelling ratio [%]",
+        ),
+        (
+            "Mean Reported Sea-Water Temperature [deg C]",
+            "Monthly Mean Reported Sea-Water Temperature",
+            "Mean reported temperature [deg C]",
+        ),
+        (
+            "Mean Reported Speed [kn]",
+            "Monthly Mean Reported Speed",
+            "Mean reported speed [kn]",
+        ),
     ]
     for column, title, y_title in chart_specs:
         figure = px.line(
@@ -290,17 +309,16 @@ def excel_data_sum_display(data_sum: pd.DataFrame, imo_number: str) -> pd.DataFr
             "Vessel": data_sum["vessel"],
             "Time(Noon/SOP/EOP)": data_sum["timestamp"],
             "Duration [h]": data_sum["duration_hours"],
-            "Vs": data_sum["speed_knots"],
-            "Mid Draft": data_sum["draft_m"],
-            "Sea Water Temp. [°C]": data_sum["data_sum_sea_temp"],
+            "Reported Speed [kn]": data_sum["speed_knots"],
+            "Active Midship Draft [m]": data_sum["draft_m"],
+            "Reported Sea-Water Temperature [deg C]": data_sum["data_sum_sea_temp"],
             "YEAR": data_sum["year"],
             "MONTH": data_sum["month"],
             "DAY": data_sum["day"],
             "HOUR": data_sum["hour"],
             "MINUTE": data_sum["minute"],
-            "Time_R": data_sum["timestamp"],
-            "Duration_R [day]": data_sum["duration_days"],
-            "M/E output": data_sum["me_output_kw"],
+            "Reported Duration [days]": data_sum["duration_days"],
+            "M/E Output [kW]": data_sum["me_output_kw"],
             "Source": data_sum["source"],
         }
     )
@@ -312,10 +330,6 @@ def render_excel_profile_details(
     vessel_name: str,
     imo_number: str,
     overall: dict,
-    monthly: pd.DataFrame,
-    fuel: dict,
-    ps3_percent: float,
-    fuel_price: float,
 ):
     st.divider()
     st.subheader(f"{profile_name} summary")
@@ -339,7 +353,7 @@ def render_excel_profile_details(
     is_power_profile = "M/E Output" in profile_name
     if is_power_profile:
         st.metric(
-            "Maximum Noon M/E output",
+            "Maximum Reported Noon M/E Output",
             f"{overall['max_noon_me_output_kw']:,.0f} kW",
         )
         st.caption(
@@ -347,7 +361,7 @@ def render_excel_profile_details(
         )
     else:
         st.metric(
-            "Maximum Noon speed",
+            "Maximum Reported Noon Speed",
             f"{overall['max_noon_speed_knots']:,.2f} kn",
         )
         st.caption(
@@ -355,48 +369,47 @@ def render_excel_profile_details(
         )
 
     overall_row = {
-        "YEAR": overall["year"],
-        "Data_S": overall["data_start"].strftime("%d/%m/%Y"),
-        "Date_E": overall["data_end"].strftime("%d/%m/%Y"),
+        "Start Year": overall["year"],
+        "Period Start": overall["data_start"].strftime("%d/%m/%Y"),
+        "Period End": overall["data_end"].strftime("%d/%m/%Y"),
         "TTL [h]": overall["total_hours"],
-        "Prop. [h]": overall["propelling_hours"],
-        "Working Ratio [%]": overall["working_ratio_pct"],
-        "Sea Water Temp [°C]": overall["avg_sea_temp_excel"],
-        "Vs [kts]": overall["avg_speed_knots"],
+        "Reported Propelling Hours [h]": overall["propelling_hours"],
+        "Reported Propelling Ratio [%]": overall["working_ratio_pct"],
+        "Mean Reported Sea-Water Temperature [deg C]": overall["avg_sea_temp_excel"],
+        "Mean Reported Speed [kn]": overall["avg_speed_knots"],
     }
     if is_power_profile:
-        overall_row["Max M/E output [kW]"] = overall["max_noon_me_output_kw"]
+        overall_row["Maximum Reported Noon M/E Output [kW]"] = overall["max_noon_me_output_kw"]
     else:
-        overall_row["Max Vs [kts]"] = overall["max_noon_speed_knots"]
+        overall_row["Maximum Reported Noon Speed [kn]"] = overall["max_noon_speed_knots"]
     overall_table = pd.DataFrame([overall_row])
     overall_formats = {
         "TTL [h]": "{:.0f}",
-        "Prop. [h]": "{:.1f}",
-        "Working Ratio [%]": "{:.2f}%",
-        "Sea Water Temp [°C]": "{:.6f}",
-        "Vs [kts]": "{:.5f}",
+        "Reported Propelling Hours [h]": "{:.1f}",
+        "Reported Propelling Ratio [%]": "{:.2f}%",
+        "Mean Reported Sea-Water Temperature [deg C]": "{:.6f}",
+        "Mean Reported Speed [kn]": "{:.5f}",
     }
     if is_power_profile:
-        overall_formats["Max M/E output [kW]"] = "{:,.0f}"
+        overall_formats["Maximum Reported Noon M/E Output [kW]"] = "{:,.0f}"
     else:
-        overall_formats["Max Vs [kts]"] = "{:.2f}"
+        overall_formats["Maximum Reported Noon Speed [kn]"] = "{:.2f}"
     st.dataframe(
         overall_table.style.format(overall_formats),
         hide_index=True,
         use_container_width=True,
     )
     st.caption(
-        "This value is calculated from the internally created Data_sum 'Sea Water Temp.' column. "
+        "The mean sea-water temperature is calculated from the internally created Data_sum "
+        "'Sea Water Temp.' column. "
         "The source is located from the uploaded two-row title 'Sea Water temperature at noon', "
         "regardless of its Excel column position."
     )
 
-    if not monthly.empty:
-        st.markdown("**Monthly graph-source table**")
-        graph_table = show_excel_monthly_table(monthly)
-        plot_excel_monthly_graphs(graph_table, profile_name)
 
-    st.subheader("Fuel consumption and PS3 estimate")
+def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
+    """Render the M/E fuel and assumed PS3 saving once for the whole analysis."""
+    st.subheader("M/E Fuel Consumption and Assumed PS3 Saving")
     grades = list(fuel["total_by_grade"])
     fuel_rows = []
     for report_name, grade_values, equivalent in (
@@ -442,7 +455,7 @@ def render_excel_profile_details(
             hide_index=True,
             use_container_width=True,
         )
-        st.code("VLSFO-equivalent MT = actual MT × fuel LCV ÷ 40.5")
+        st.code("VLSFO-equivalent MT = actual MT x fuel LCV / 40.5")
 
     equivalent_consumption = fuel["total_vlsfo_equivalent_mt"]
     saving_rate = ps3_percent / 100
@@ -451,24 +464,24 @@ def render_excel_profile_details(
             {
                 "Item": "Total M/E fuel",
                 "Common basis": "VLSFO equivalent",
-                "Raw consumption [MT]": fuel["total_raw_mt"],
-                "Equivalent consumption [MT]": equivalent_consumption,
+                "Reported Consumption [MT]": fuel["total_raw_mt"],
+                "VLSFO-Equivalent Consumption [MT]": equivalent_consumption,
                 "PS3 [%]": ps3_percent,
                 "FOC saving [VLSFO-eq. MT]": equivalent_consumption * saving_rate,
                 "VLSFO price [US$/MT]": fuel_price,
-                "Estimated saving [US$]": equivalent_consumption * saving_rate * fuel_price,
+                "Estimated Saving for Uploaded Period [US$]": equivalent_consumption * saving_rate * fuel_price,
             },
         ]
     )
     st.dataframe(
         ps3_table.style.format(
             {
-                "Raw consumption [MT]": "{:,.3f}",
-                "Equivalent consumption [MT]": "{:,.3f}",
+                "Reported Consumption [MT]": "{:,.3f}",
+                "VLSFO-Equivalent Consumption [MT]": "{:,.3f}",
                 "PS3 [%]": "{:.1f}%",
                 "FOC saving [VLSFO-eq. MT]": "{:,.3f}",
                 "VLSFO price [US$/MT]": "{:,.2f}",
-                "Estimated saving [US$]": "{:,.2f}",
+                "Estimated Saving for Uploaded Period [US$]": "{:,.2f}",
             }
         ),
         hide_index=True,
@@ -479,6 +492,7 @@ def render_excel_profile_details(
         "D/G, boiler, cylinder oil and stopping-condition fuel remain excluded, matching the Profile scope."
     )
 
+
 def build_payback_analysis(
     capex_usd: float,
     annual_gross_fuel_saving_usd: float,
@@ -487,22 +501,14 @@ def build_payback_analysis(
     charter_duration_years: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build payback and cumulative cash-flow tables over the charter period."""
-
     scenarios: list[tuple[str, int | None]] = [
-        ("Baseline (No levy)", None)
+        ("Fuel-saving only (no avoided levy benefit)", None)
     ]
-
     if annual_avoided_co2_cost_usd > 0:
         scenarios.extend(
             [
-                (
-                    "Avoided CO2 levy benefit after 1-year delay",
-                    2,
-                ),
-                (
-                    "Avoided CO2 levy benefit after 2-year delay",
-                    3,
-                ),
+                ("Avoided CO2 levy benefit after 1-year delay", 2),
+                ("Avoided CO2 levy benefit after 2-year delay", 3),
             ]
         )
 
@@ -511,7 +517,6 @@ def build_payback_analysis(
 
     for scenario_name, levy_start_year in scenarios:
         cumulative = -capex_usd
-
         cashflow_rows.append(
             {
                 "Scenario": scenario_name,
@@ -527,29 +532,20 @@ def build_payback_analysis(
         payback_years: float | None = None
         charter_net_benefit = 0.0
 
-        # A longer calculation horizon allows the app to report
-        # payback even when it occurs after the charter ends.
-        calculation_horizon = max(
-            charter_duration_years,
-            200,
-        )
-
+        # Use a long horizon so payback can still be reported when it occurs
+        # after the selected charter period.
+        calculation_horizon = max(charter_duration_years, 200)
         for year in range(1, calculation_horizon + 1):
             avoided_co2 = (
                 annual_avoided_co2_cost_usd
-                if (
-                    levy_start_year is not None
-                    and year >= levy_start_year
-                )
+                if levy_start_year is not None and year >= levy_start_year
                 else 0.0
             )
-
             net_cash_flow = (
                 annual_gross_fuel_saving_usd
                 + avoided_co2
                 - annual_additional_opex_usd
             )
-
             previous_cumulative = cumulative
             cumulative += net_cash_flow
 
@@ -558,67 +554,39 @@ def build_payback_analysis(
                 and net_cash_flow > 0
                 and previous_cumulative < 0 <= cumulative
             ):
-                payback_years = (
-                    year - 1
-                ) + (
-                    -previous_cumulative / net_cash_flow
-                )
+                payback_years = (year - 1) + (-previous_cumulative / net_cash_flow)
 
             if year <= charter_duration_years:
                 charter_net_benefit += net_cash_flow
-
                 cashflow_rows.append(
                     {
                         "Scenario": scenario_name,
                         "Year": year,
-                        "Gross fuel saving [US$]":
-                            annual_gross_fuel_saving_usd,
-                        "Avoided CO2 levy benefit [US$]":
-                            avoided_co2,
-                        "Additional OPEX [US$]":
-                            annual_additional_opex_usd,
-                        "Net cash flow [US$]":
-                            net_cash_flow,
-                        "Cumulative cash flow [US$]":
-                            cumulative,
+                        "Gross fuel saving [US$]": annual_gross_fuel_saving_usd,
+                        "Avoided CO2 levy benefit [US$]": avoided_co2,
+                        "Additional OPEX [US$]": annual_additional_opex_usd,
+                        "Net cash flow [US$]": net_cash_flow,
+                        "Cumulative cash flow [US$]": cumulative,
                     }
                 )
 
-        year_one_net_saving = (
-            annual_gross_fuel_saving_usd
-            - annual_additional_opex_usd
-        )
-
-        charter_end_cash_flow = (
-            charter_net_benefit
-            - capex_usd
-        )
-
+        year_one_net_saving = annual_gross_fuel_saving_usd - annual_additional_opex_usd
+        charter_end_cash_flow = charter_net_benefit - capex_usd
         payback_within_charter = (
-            payback_years is not None
-            and payback_years <= charter_duration_years
+            payback_years is not None and payback_years <= charter_duration_years
         )
-
         summary_rows.append(
             {
                 "Scenario": scenario_name,
-                "Year 1 net saving [US$]":
-                    year_one_net_saving,
-                "Payback period [years]":
-                    payback_years,
-                "Payback within charter":
-                    "Yes" if payback_within_charter else "No",
-                "Cost saving after payback [US$]":
-                    max(charter_end_cash_flow, 0.0),
-                "Unrecovered CAPEX at charter end [US$]":
-                    max(-charter_end_cash_flow, 0.0),
+                "First-year net benefit [US$]": year_one_net_saving,
+                "Payback period [years]": payback_years,
+                "Payback within charter": "Yes" if payback_within_charter else "No",
+                "Net surplus at charter end [US$]": max(charter_end_cash_flow, 0.0),
+                "Unrecovered CAPEX at charter end [US$]": max(-charter_end_cash_flow, 0.0),
             }
         )
 
-    return (
-        pd.DataFrame(cashflow_rows),
-        pd.DataFrame(summary_rows),
-    )
+    return pd.DataFrame(cashflow_rows), pd.DataFrame(summary_rows)
 
 
 def render_payback_analysis(
@@ -627,99 +595,48 @@ def render_payback_analysis(
     ps3_percent: float,
     fuel_price: float,
 ):
-    """Render the payback analysis tab."""
-
-    st.subheader("Fuel-saving Payback Analysis")
-
+    """Render the payback tab from the existing Profile fuel result."""
+    st.subheader("Fuel-Saving Payback and Charter Outcome")
     st.caption(
-        "The app annualises the PS3 fuel saving calculated "
-        "over the uploaded report period. CAPEX and other "
-        "commercial assumptions must be entered manually."
+        "The app annualises the PS3 fuel saving calculated over the uploaded report period. "
+        "CAPEX and other commercial assumptions must be entered manually."
     )
 
-    analysis_hours = float(
-        overall.get("total_hours", float("nan"))
-    )
+    analysis_hours = float(overall.get("total_hours", float("nan")))
+    equivalent_consumption_mt = float(fuel.get("total_vlsfo_equivalent_mt", 0.0))
 
-    equivalent_consumption_mt = float(
-        fuel.get("total_vlsfo_equivalent_mt", 0.0)
-    )
-
-    if (
-        not math.isfinite(analysis_hours)
-        or analysis_hours <= 0
-    ):
-        st.error(
-            "Payback cannot be calculated because the "
-            "analysis duration is invalid."
-        )
+    if not math.isfinite(analysis_hours) or analysis_hours <= 0:
+        st.error("Payback cannot be calculated because the analysis duration is invalid.")
         return
-
     if not 0 <= ps3_percent <= 100:
-        st.error(
-            "PS3 saving percentage must be between "
-            "0% and 100%."
-        )
+        st.error("PS3 saving percentage must be between 0% and 100%.")
         return
-
     if fuel_price < 0:
         st.error("Fuel price cannot be negative.")
         return
 
     analysis_days = analysis_hours / 24
-
-    period_fuel_saving_mt = (
-        equivalent_consumption_mt
-        * ps3_percent
-        / 100
-    )
-
-    annualisation_factor = (
-        365 * 24
-    ) / analysis_hours
-
-    calculated_annual_fuel_saving_mt = (
-        period_fuel_saving_mt
-        * annualisation_factor
-    )
+    period_fuel_saving_mt = equivalent_consumption_mt * ps3_percent / 100
+    annualisation_factor = (365 * 24) / analysis_hours
+    calculated_annual_fuel_saving_mt = period_fuel_saving_mt * annualisation_factor
 
     basis_columns = st.columns(4)
-
-    basis_columns[0].metric(
-        "Analysis duration",
-        f"{analysis_days:,.1f} days",
-    )
-
-    basis_columns[1].metric(
-        "Period fuel saving",
-        f"{period_fuel_saving_mt:,.3f} MT",
-    )
-
-    basis_columns[2].metric(
-        "Annualisation factor",
-        f"{annualisation_factor:,.4f}x",
-    )
-
+    basis_columns[0].metric("Uploaded report span", f"{analysis_days:,.1f} days")
+    basis_columns[1].metric("Period fuel saving", f"{period_fuel_saving_mt:,.3f} MT")
+    basis_columns[2].metric("Annualisation factor", f"{annualisation_factor:,.4f}x")
     basis_columns[3].metric(
-        "Calculated annual fuel saving",
-        (
-            f"{calculated_annual_fuel_saving_mt:,.3f} "
-            "MT/year"
-        ),
+        "Annualised assumed fuel saving",
+        f"{calculated_annual_fuel_saving_mt:,.3f} MT/year",
     )
 
     if analysis_days < 180:
         st.warning(
-            "The uploaded period is shorter than 180 days. "
-            "Annualising a short period can produce an "
-            "unstable payback estimate, especially if "
-            "vessel operations are seasonal."
+            "The uploaded period is shorter than 180 days. Annualising a short period can produce "
+            "an unstable payback estimate, especially if vessel operations are seasonal."
         )
 
     st.markdown("**Financial assumptions**")
-
     input_columns = st.columns(3)
-
     with input_columns[0]:
         capex_amount = st.number_input(
             "Project CAPEX",
@@ -728,14 +645,12 @@ def render_payback_analysis(
             step=1_000.0,
             key="payback-capex-amount",
         )
-
     with input_columns[1]:
         capex_currency = st.selectbox(
             "CAPEX currency",
             ["EUR", "USD"],
             key="payback-capex-currency",
         )
-
     with input_columns[2]:
         if capex_currency == "EUR":
             exchange_rate = st.number_input(
@@ -748,7 +663,6 @@ def render_payback_analysis(
             )
         else:
             exchange_rate = 1.0
-
             st.text_input(
                 "Exchange rate",
                 value="Not required for USD CAPEX",
@@ -757,22 +671,19 @@ def render_payback_analysis(
             )
 
     option_columns = st.columns(3)
-
     with option_columns[0]:
         charter_duration_years = st.number_input(
-            "Charter duration [Remaining Years]",
+            "Charter duration [years]",
             min_value=1,
             max_value=50,
             value=10,
             step=1,
             key="payback-charter-duration",
             help=(
-                "Enter the period during which the investor "
-                "receives the fuel-saving benefit. Savings "
-                "after the charter ends are not counted."
+                "Enter the period during which the investor receives the fuel-saving benefit. "
+                "Savings after the charter ends are not counted."
             ),
         )
-
     with option_columns[1]:
         annual_additional_opex_usd = st.number_input(
             "Additional annual OPEX [US$]",
@@ -780,48 +691,35 @@ def render_payback_analysis(
             value=0.0,
             step=1_000.0,
             key="payback-annual-opex",
-            help=(
-                "Extra yearly maintenance, servicing or "
-                "operating cost caused by the project."
-            ),
+            help="Extra yearly maintenance, servicing or operating cost caused by the project.",
         )
-
     with option_columns[2]:
         use_manual_saving = st.checkbox(
             "Override annual fuel saving",
             value=False,
             key="payback-manual-saving-toggle",
             help=(
-                "Use this only when an approved annual "
-                "fuel-saving estimate should replace the "
-                "annualised PS3 result."
+                "Use this only when an approved annual fuel-saving estimate should replace "
+                "the annualised PS3 result."
             ),
         )
 
     if use_manual_saving:
         annual_fuel_saving_mt = st.number_input(
-            (
-                "Approved annual fuel saving "
-                "[VLSFO-equivalent MT/year]"
-            ),
+            "Approved annual fuel saving [VLSFO-equivalent MT/year]",
             min_value=0.0,
-            value=float(
-                calculated_annual_fuel_saving_mt
-            ),
+            value=float(calculated_annual_fuel_saving_mt),
             step=1.0,
             key="payback-manual-annual-saving",
         )
     else:
-        annual_fuel_saving_mt = (
-            calculated_annual_fuel_saving_mt
-        )
+        annual_fuel_saving_mt = calculated_annual_fuel_saving_mt
 
     include_co2_scenarios = st.checkbox(
         "Include avoided CO2 levy benefit scenarios",
         value=False,
         key="payback-include-co2",
     )
-
     if include_co2_scenarios:
         annual_avoided_co2_cost_usd = st.number_input(
             "Avoided CO2 levy benefit [US$/year]",
@@ -830,127 +728,67 @@ def render_payback_analysis(
             step=1_000.0,
             key="payback-avoided-co2",
             help=(
-                "Enter only the portion of the levy avoided "
-                "because the project reduces emissions, not "
-                "the company's total CO2 levy. The example "
-                "workbook uses $54,197 because "
+                "Enter only the portion of the levy avoided because the project reduces emissions, "
+                "not the company's total CO2 levy. The example workbook uses $54,197 because "
                 "$122,909 - $68,712 = $54,197."
             ),
         )
     else:
         annual_avoided_co2_cost_usd = 0.0
 
-    capex_usd = (
-        capex_amount
-        * exchange_rate
-    )
-
-    annual_gross_saving_usd = (
-        annual_fuel_saving_mt
-        * fuel_price
-    )
-
-    annual_baseline_net_saving_usd = (
-        annual_gross_saving_usd
-        - annual_additional_opex_usd
-    )
+    capex_usd = capex_amount * exchange_rate
+    annual_gross_saving_usd = annual_fuel_saving_mt * fuel_price
+    annual_baseline_net_saving_usd = annual_gross_saving_usd - annual_additional_opex_usd
 
     if capex_usd <= 0:
-        st.error(
-            "Project CAPEX must be greater than zero."
-        )
+        st.error("Project CAPEX must be greater than zero.")
         return
-
     if annual_baseline_net_saving_usd <= 0:
         st.error(
-            "Annual net saving is zero or negative. "
-            "The baseline project cannot achieve payback "
+            "Annual net saving is zero or negative. The baseline project cannot achieve payback "
             "with the current assumptions."
         )
 
-    cashflow, scenario_summary = (
-        build_payback_analysis(
-            capex_usd=capex_usd,
-            annual_gross_fuel_saving_usd=(
-                annual_gross_saving_usd
-            ),
-            annual_additional_opex_usd=(
-                annual_additional_opex_usd
-            ),
-            annual_avoided_co2_cost_usd=(
-                annual_avoided_co2_cost_usd
-            ),
-            charter_duration_years=int(
-                charter_duration_years
-            ),
-        )
+    cashflow, scenario_summary = build_payback_analysis(
+        capex_usd=capex_usd,
+        annual_gross_fuel_saving_usd=annual_gross_saving_usd,
+        annual_additional_opex_usd=annual_additional_opex_usd,
+        annual_avoided_co2_cost_usd=annual_avoided_co2_cost_usd,
+        charter_duration_years=int(charter_duration_years),
     )
 
     baseline = scenario_summary.iloc[0]
-
-    baseline_payback = baseline[
-        "Payback period [years]"
-    ]
-
+    baseline_payback = baseline["Payback period [years]"]
     result_columns = st.columns(4)
-
-    result_columns[0].metric(
-        "CAPEX",
-        f"US$ {capex_usd:,.0f}",
-    )
-
+    result_columns[0].metric("CAPEX", f"US$ {capex_usd:,.0f}")
     result_columns[1].metric(
-        "Annual gross fuel saving",
-        f"US$ {annual_gross_saving_usd:,.0f}",
+        "Annual fuel-cost saving before OPEX", f"US$ {annual_gross_saving_usd:,.0f}"
     )
-
     result_columns[2].metric(
         "Baseline payback",
-        (
-            f"{baseline_payback:.2f} years"
-            if pd.notna(baseline_payback)
-            else "No payback"
-        ),
+        f"{baseline_payback:.2f} years" if pd.notna(baseline_payback) else "No payback",
     )
-
     result_columns[3].metric(
-        "Cost saving after payback",
-        (
-            "US$ "
-            f"{baseline['Cost saving after payback [US$]']:,.0f}"
-        ),
-        help=(
-            "Net saving remaining after CAPEX recovery "
-            f"by the end of the "
-            f"{int(charter_duration_years)}-year charter."
-        ),
+        "Net surplus at charter end",
+        f"US$ {baseline['Net surplus at charter end [US$]']:,.0f}",
+        help=f"Net saving remaining after CAPEX recovery by the end of the {int(charter_duration_years)}-year charter.",
     )
 
     if baseline["Payback within charter"] == "No":
         st.warning(
-            "The baseline project does not recover its "
-            f"CAPEX within the "
-            f"{int(charter_duration_years)}-year charter. "
-            "Unrecovered CAPEX at charter end: US$ "
-            f"{baseline['Unrecovered CAPEX at charter end [US$]']:,.0f}."
+            f"The baseline project does not recover its CAPEX within the "
+            f"{int(charter_duration_years)}-year charter. Unrecovered CAPEX at charter end: "
+            f"US$ {baseline['Unrecovered CAPEX at charter end [US$]']:,.0f}."
         )
 
-    st.markdown("**Scenario results**")
-
+    st.markdown("**Payback and charter-end outcome by scenario**")
     st.dataframe(
         scenario_summary.style.format(
             {
-                "Year 1 net saving [US$]":
-                    "US$ {:,.0f}",
-                "Payback period [years]":
-                    "{:.2f}",
-                "Cost saving after payback [US$]":
-                    "US$ {:,.0f}",
-                (
-                    "Unrecovered CAPEX at "
-                    "charter end [US$]"
-                ):
-                    "US$ {:,.0f}",
+                "First-year net benefit [US$]": "US$ {:,.0f}",
+                "Payback period [years]": "{:.2f}",
+                "Net surplus at charter end [US$]": "US$ {:,.0f}",
+                "Unrecovered CAPEX at charter end [US$]": "US$ {:,.0f}",
             },
             na_rep="No payback",
         ),
@@ -958,22 +796,15 @@ def render_payback_analysis(
         use_container_width=True,
     )
 
-    st.markdown(
-        "**Cumulative project cash flow**"
-    )
-
+    st.markdown("**Cumulative cash flow over the charter**")
     figure = px.line(
         cashflow,
         x="Year",
         y="Cumulative cash flow [US$]",
         color="Scenario",
         markers=True,
-        title=(
-            "Cumulative Cash Flow Across the "
-            "Charter and Break-even"
-        ),
+        title="Cumulative Cash Flow Across the Charter and Break-even",
     )
-
     figure.add_hline(
         y=0,
         line_dash="dash",
@@ -981,48 +812,33 @@ def render_payback_analysis(
         annotation_text="Break-even",
         annotation_position="top left",
     )
-
     figure.update_layout(
         xaxis_title="Charter year",
         yaxis_title="Cumulative cash flow [US$]",
         hovermode="x unified",
         height=480,
-        margin={
-            "l": 20,
-            "r": 20,
-            "t": 60,
-            "b": 20,
-        },
+        margin={"l": 20, "r": 20, "t": 60, "b": 20},
     )
-
     st.plotly_chart(
         figure,
         use_container_width=True,
         key="payback-cumulative-cashflow-chart",
     )
 
-    with st.expander(
-        "Show yearly cash-flow calculation"
-    ):
+    with st.expander("Show yearly cash-flow calculation"):
         st.dataframe(
             cashflow.style.format(
                 {
-                    "Gross fuel saving [US$]":
-                        "{:,.2f}",
-                    "Avoided CO2 levy benefit [US$]":
-                        "{:,.2f}",
-                    "Additional OPEX [US$]":
-                        "{:,.2f}",
-                    "Net cash flow [US$]":
-                        "{:,.2f}",
-                    "Cumulative cash flow [US$]":
-                        "{:,.2f}",
+                    "Gross fuel saving [US$]": "{:,.2f}",
+                    "Avoided CO2 levy benefit [US$]": "{:,.2f}",
+                    "Additional OPEX [US$]": "{:,.2f}",
+                    "Net cash flow [US$]": "{:,.2f}",
+                    "Cumulative cash flow [US$]": "{:,.2f}",
                 }
             ),
             hide_index=True,
             use_container_width=True,
         )
-
         st.download_button(
             "Download payback cash flow CSV",
             dataframe_csv(cashflow),
@@ -1031,37 +847,27 @@ def render_payback_analysis(
             key="payback-cashflow-download",
         )
 
-    with st.expander(
-        "Show formulas and assumptions"
-    ):
+    with st.expander("Show formulas and assumptions"):
         st.code(
-            "Period fuel saving = "
-            "VLSFO-equivalent consumption x PS3%\n"
-            "Annual fuel saving = period fuel saving "
-            "x 8,760 / analysis hours\n"
-            "Annual gross saving = annual fuel saving "
-            "x VLSFO reference price\n"
-            "Annual net saving = gross saving + "
-            "avoided CO2 levy benefit - additional OPEX\n"
-            "Payback = time until cumulative cash flow "
-            "reaches US$0\n"
-            "Cost saving after payback = "
-            "max(total charter net savings - CAPEX, 0)\n"
-            "Unrecovered CAPEX = "
-            "max(CAPEX - total charter net savings, 0)"
+            "Period fuel saving = VLSFO-equivalent consumption x PS3%\n"
+            "Annual fuel saving = period fuel saving x 8,760 / analysis hours\n"
+            "Annual gross saving = annual fuel saving x VLSFO reference price\n"
+            "Annual net saving = gross saving + avoided CO2 levy benefit - additional OPEX\n"
+            "Payback = time until cumulative cash flow reaches US$0\n"
+            "Net surplus at charter end = max(total charter net savings - CAPEX, 0)\n"
+            "Unrecovered CAPEX = max(CAPEX - total charter net savings, 0)"
         )
-
         st.caption(
-            "The result inherits the app's "
-            "VLSFO-equivalent fuel conversion and "
-            "PS3 saving assumption. It is an estimate, "
-            "not a measured retrofit saving."
+            "The result inherits the app's VLSFO-equivalent fuel conversion and PS3 saving assumption. "
+            "It is an estimate, not a measured retrofit saving."
         )
 
-st.title("Vessel Performance Profile")
+
+st.title("Vessel Operating Profile & Payback Analysis")
 st.caption(
     "Upload Noon, Departure and Arrival reports. Files are identified from their two-row column "
-    "titles—not fixed Excel column positions—and the approved Excel profile method is reproduced automatically."
+    "titles - not fixed Excel column positions. The app builds operating-hour profiles, a monthly "
+    "operating summary, an M/E fuel-saving estimate and a charter-period payback analysis."
 )
 
 with st.expander("How file validation works"):
@@ -1102,12 +908,12 @@ except VesselValidationError as exc:
 st.success(f"Vessel validation passed: {detected_vessel}")
 
 with st.sidebar:
-    st.header("Locked methodology")
+    st.header("Operating-profile methodology")
     st.info(
-        "Excel Replication Mode\n\n"
-        "Draft: 7–16 m\n\n"
-        "Speed: 9–24 kn\n\n"
-        "M/E output: 0–22,000 kW\n\n"
+        "Excel-compatible fixed-bin settings\n\n"
+        "Draft: 7-16 m\n\n"
+        "Speed: 9-24 kn\n\n"
+        "M/E output: 0-22,000 kW\n\n"
         "Arrival duration: excluded"
     )
     known_imo = {"NYK FUTAGO": "9487524"}
@@ -1137,35 +943,39 @@ if not temperature_audit["valid"]:
     st.error(temperature_audit["message"])
     st.stop()
 
-st.subheader("Processing summary")
+st.subheader("Calculation Input Summary")
 metrics = st.columns(5)
 valid_duration = segments.loc[segments["duration_hours"].gt(0), "duration_hours"].sum()
-metrics[0].metric("Loaded Noon rows", f"{len(segments):,}")
-metrics[1].metric("Noon propelling hours", f"{valid_duration:,.1f}")
-metrics[2].metric("Speed denominator hours", f"{speed_profile.total_hours:,.1f}")
-metrics[3].metric("M/E denominator hours", f"{power_profile.total_hours:,.1f}")
-metrics[4].metric("M/E table total", f"{power_profile.percent.to_numpy().sum():.2f}%")
+metrics[0].metric("Noon records loaded", f"{len(segments):,}")
+metrics[1].metric("Reported Noon propelling hours", f"{valid_duration:,.1f}")
+metrics[2].metric("Eligible speed-profile hours", f"{speed_profile.total_hours:,.1f}")
+metrics[3].metric("Eligible M/E-profile hours", f"{power_profile.total_hours:,.1f}")
+metrics[4].metric(
+    "Share within displayed M/E bands",
+    f"{power_profile.percent.to_numpy().sum():.2f}%",
+)
 
 tabs = st.tabs(
     [
-        "Data checks",
-        "Profile: Speed vs Draft",
-        "Profile: M/E Output vs Draft",
-        "Monthly analysis",
-        "Payback analysis",
-        "Processed data",
+        "Data Quality",
+        "Speed-Draft Operating Profile",
+        "M/E Output-Draft Operating Profile",
+        "Monthly Operating Summary",
+        "M/E Fuel & PS3 Saving",
+        "Payback & Charter Outcome",
+        "Internal Data_sum",
     ]
 )
 
 with tabs[0]:
-    st.subheader("Quality-control results")
+    st.subheader("Data Quality Results")
     if temperature_audit["quality_warnings"]:
         st.warning(
             temperature_audit["message"] + " " + " ".join(temperature_audit["quality_warnings"])
         )
     else:
         st.success(temperature_audit["message"])
-    with st.expander("Data_sum Sea Water Temp calculation audit", expanded=True):
+    with st.expander("Data_sum sea-water-temperature calculation audit", expanded=True):
         temperature_check = pd.DataFrame(
             [
                 {
@@ -1179,7 +989,7 @@ with tabs[0]:
                     "Average": temperature_audit["average_value"],
                     "Minimum": temperature_audit["minimum_value"],
                     "Maximum": temperature_audit["maximum_value"],
-                    "Outside -2 to 40 °C": temperature_audit["out_of_range_count"],
+                    "Outside -2 to 40 deg C": temperature_audit["out_of_range_count"],
                 }
             ]
         )
@@ -1196,24 +1006,30 @@ with tabs[0]:
             use_container_width=True,
         )
         st.code(
-            f"{temperature_audit['sum_value']:,.1f} ÷ "
+            f"{temperature_audit['sum_value']:,.1f} / "
             f"{temperature_audit['numeric_count']:,} = "
             f"{temperature_audit['average_value']:.6f}"
         )
     check_columns = st.columns(2)
     with check_columns[0]:
-        st.metric("Speed table coverage", f"{speed_profile.coverage:.2%}")
+        st.metric(
+            "Share of eligible speed hours inside displayed bands",
+            f"{speed_profile.coverage:.2%}",
+        )
         speed_excluded = segments.loc[~segments["speed_included"], "speed_exclusion"].value_counts()
-        st.write("Speed exclusions")
+        st.write("Noon rows excluded from speed profile")
         st.dataframe(
             speed_excluded.rename_axis("Reason").reset_index(name="Rows"),
             hide_index=True,
             use_container_width=True,
         )
     with check_columns[1]:
-        st.metric("M/E table coverage", f"{power_profile.coverage:.2%}")
+        st.metric(
+            "Share of eligible M/E hours inside displayed bands",
+            f"{power_profile.coverage:.2%}",
+        )
         power_excluded = segments.loc[~segments["power_included"], "power_exclusion"].value_counts()
-        st.write("M/E output exclusions")
+        st.write("Noon rows excluded from M/E output profile")
         st.dataframe(
             power_excluded.rename_axis("Reason").reset_index(name="Rows"),
             hide_index=True,
@@ -1228,7 +1044,7 @@ with tabs[0]:
     outside_power = power_profile.total_hours - power_profile.hours.to_numpy().sum()
     if outside_power > 0.001:
         st.warning(
-            f"{outside_power:,.1f} denominator hours fall outside the fixed 0–<23,000 kW table. "
+            f"{outside_power:,.1f} denominator hours fall outside the fixed 0-<23,000 kW table. "
             "They remain in the denominator, matching the Excel formula."
         )
     high_working_ratio = monthly[monthly["working_ratio_pct"] > 100.5] if not monthly.empty else pd.DataFrame()
@@ -1237,21 +1053,21 @@ with tabs[0]:
 
 with tabs[1]:
     st.caption(
-        "Locked Excel method: draft rows start at 7–16 m and speed columns start at 9–24 kn. "
-        "A label such as 9 means the 9–<10 kn band. Each cell uses the Excel SUMIFS denominator logic."
+        "Locked Excel method: draft rows start at 7-16 m and speed columns start at 9-24 kn. "
+        "A label such as 9 means the 9-<10 kn band. Each cell uses the Excel SUMIFS denominator logic."
     )
     heatmap(
         speed_profile,
-        "Speed–Draft Operating Profile",
-        "Average speed (kn)",
+        "Distribution of Propelling Hours by Speed and Draft",
+        "Reported speed band start [kn]",
         "speed-draft-heatmap",
     )
     speed_table = render_readable_profile_table(
         speed_profile,
-        "Speed start [kn]",
+        "Speed band start [kn]",
         [
-            ("Speed columns 9–16 kn", [str(value) for value in range(9, 17)]),
-            ("Speed columns 17–24 kn", [str(value) for value in range(17, 25)]),
+            ("Speed bands starting at 9-16 kn", [str(value) for value in range(9, 17)]),
+            ("Speed bands starting at 17-24 kn", [str(value) for value in range(17, 25)]),
         ],
     )
     st.download_button(
@@ -1262,35 +1078,31 @@ with tabs[1]:
     )
     render_excel_profile_details(
         speed_profile,
-        "Speed–Draft Profile",
+        "Speed-Draft Profile",
         detected_vessel,
         imo_number,
         overall,
-        monthly,
-        fuel,
-        ps3_percent,
-        fuel_price,
     )
 
 with tabs[2]:
     st.caption(
-        "Locked Excel method: draft rows start at 7–16 m and M/E output columns start at "
-        "0–22,000 kW. A label such as 1000 means the 1,000–<2,000 kW band. "
+        "Locked Excel method: draft rows start at 7-16 m and M/E output columns start at "
+        "0-22,000 kW. A label such as 1000 means the 1,000-<2,000 kW band. "
         "Values above the displayed range remain in the denominator exactly as in Excel."
     )
     heatmap(
         power_profile,
-        "M/E Output–Draft Operating Profile",
-        "M/E output (kW)",
+        "Distribution of Propelling Hours by M/E Output and Draft",
+        "Reported M/E output band start [kW]",
         "me-output-draft-heatmap",
     )
     power_table = render_readable_profile_table(
         power_profile,
-        "M/E output start [kW]",
+        "M/E output band start [kW]",
         [
-            ("M/E output columns 0–7,000 kW", [str(value) for value in range(0, 8_000, 1_000)]),
-            ("M/E output columns 8,000–15,000 kW", [str(value) for value in range(8_000, 16_000, 1_000)]),
-            ("M/E output columns 16,000–22,000 kW", [str(value) for value in range(16_000, 23_000, 1_000)]),
+            ("M/E output bands starting at 0-7,000 kW", [str(value) for value in range(0, 8_000, 1_000)]),
+            ("M/E output bands starting at 8,000-15,000 kW", [str(value) for value in range(8_000, 16_000, 1_000)]),
+            ("M/E output bands starting at 16,000-22,000 kW", [str(value) for value in range(16_000, 23_000, 1_000)]),
         ],
     )
     st.download_button(
@@ -1301,34 +1113,37 @@ with tabs[2]:
     )
     render_excel_profile_details(
         power_profile,
-        "M/E Output–Draft Profile",
+        "M/E Output-Draft Profile",
         detected_vessel,
         imo_number,
         overall,
-        monthly,
-        fuel,
-        ps3_percent,
-        fuel_price,
     )
 
 with tabs[3]:
     st.caption(
-        "This table is calculated from the internal Data_sum and supplies the three graphs. "
+        "This operating summary is calculated from the internal Data_sum and supplies the three charts. "
         "It runs from the earliest to latest Noon/Departure/Arrival month."
     )
     if monthly.empty:
-        st.warning("No valid dated operating periods are available for monthly analysis.")
+        st.warning("No valid dated operating periods are available for the monthly summary.")
     else:
         monthly_table = show_excel_monthly_table(monthly)
         plot_excel_monthly_graphs(monthly_table, "monthly-analysis")
         st.download_button(
-            "Download monthly analysis CSV",
+            "Download monthly operating summary CSV",
             dataframe_csv(monthly_table),
-            "monthly_analysis.csv",
+            "monthly_operating_summary.csv",
             "text/csv",
         )
 
 with tabs[4]:
+    render_fuel_summary(
+        fuel=fuel,
+        ps3_percent=ps3_percent,
+        fuel_price=fuel_price,
+    )
+
+with tabs[5]:
     render_payback_analysis(
         overall=overall,
         fuel=fuel,
@@ -1336,10 +1151,10 @@ with tabs[4]:
         fuel_price=fuel_price,
     )
 
-with tabs[5]:
+with tabs[6]:
     st.caption(
-        "This is the internally created Data_sum. The profile summaries, monthly table and "
-        "graphs are calculated from this table."
+        "This is the internally created Data_sum calculation-input table. The operating profiles, "
+        "monthly summary and charts are calculated from these records."
     )
     displayed_data_sum = excel_data_sum_display(data_sum, imo_number)
     st.dataframe(displayed_data_sum, hide_index=True, use_container_width=True)
