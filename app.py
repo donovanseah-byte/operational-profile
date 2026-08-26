@@ -1152,7 +1152,7 @@ tabs = st.tabs(
         "Profile: Speed vs Draft",
         "Profile: M/E Output vs Draft",
         "Monthly analysis",
-        "Payback analysis",,
+        "Payback analysis",
         "Processed data",
     ]
 )
