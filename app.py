@@ -760,7 +760,7 @@ def render_payback_analysis(
 
     with option_columns[0]:
         charter_duration_years = st.number_input(
-            "Charter duration [years]",
+            "Charter duration [Remaining Years]",
             min_value=1,
             max_value=50,
             value=10,
