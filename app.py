@@ -469,7 +469,7 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
                 "PS3 [%]": ps3_percent,
                 "FOC saving [VLSFO-eq. MT]": equivalent_consumption * saving_rate,
                 "VLSFO price [US$/MT]": fuel_price,
-                "Estimated Saving for Uploaded Period [US$]": equivalent_consumption * saving_rate * fuel_price,
+                "Total Estimated Cost for Uploaded Period [US$]": equivalent_consumption * saving_rate * fuel_price,
             },
         ]
     )
@@ -481,7 +481,7 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
                 "PS3 [%]": "{:.1f}%",
                 "FOC saving [VLSFO-eq. MT]": "{:,.3f}",
                 "VLSFO price [US$/MT]": "{:,.2f}",
-                "Estimated Saving for Uploaded Period [US$]": "{:,.2f}",
+                "Total Estimated Cost for Uploaded Period [US$]": "{:,.2f}",
             }
         ),
         hide_index=True,
