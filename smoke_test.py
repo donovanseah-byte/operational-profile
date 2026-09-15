@@ -5,9 +5,13 @@ import io
 import re
 import zipfile
 from dataclasses import replace
+from pathlib import Path
 
 import openpyxl
 import numpy as np
+import pandas as pd
+
+from profile_report import build_a4_profile_report
 
 from profile_processing import (
     EXCEL_POWER_EDGES,
@@ -27,6 +31,89 @@ from profile_processing import (
     sea_temperature_audit,
     validate_vessel_consistency,
 )
+
+
+def check_app_interface(app_path: str | None = None) -> None:
+    """Confirm that the simplified interface and terminology are present."""
+    path = Path(app_path) if app_path else Path(__file__).with_name("app.py")
+    source = path.read_text(encoding="utf-8")
+
+    required_text = [
+        "FOC Saving Assumption (%)",
+        "Project CAPEX [US$]",
+        "Operating Profile & Fuel Saving",
+        "Payback & Charter Outcome",
+        "Internal Data_sum",
+        "A4 Professional Report",
+        "Download one-page A4 PDF report",
+    ]
+    removed_text = [
+        "Grouped bands",
+        "Used operating bands",
+        "Data Quality",
+        "PS3",
+        "EUR",
+        "Exchange rate",
+    ]
+
+    for text in required_text:
+        assert text in source, f"Expected interface text is missing: {text}"
+    for text in removed_text:
+        assert text not in source, f"Removed interface text is still present: {text}"
+
+
+def check_a4_report() -> None:
+    """Generate a small representative report and verify that it is a PDF."""
+    class Profile:
+        percent = pd.DataFrame(
+            [[45.0, 5.0], [20.0, 30.0]],
+            index=["10", "11"],
+            columns=["13", "14"],
+        )
+
+    pdf = build_a4_profile_report(
+        vessel_name="TEST VESSEL",
+        imo_number="1234567",
+        overall={
+            "data_start": pd.Timestamp("2026-01-01"),
+            "data_end": pd.Timestamp("2026-12-31"),
+            "total_hours": 8_736.0,
+            "propelling_hours": 5_200.0,
+            "working_ratio_pct": 59.5,
+            "avg_speed_knots": 14.2,
+            "max_noon_speed_knots": 19.6,
+            "max_noon_me_output_kw": 29_880.0,
+        },
+        noon_records=265,
+        speed_profile=Profile(),
+        power_profile=Profile(),
+        monthly=pd.DataFrame(
+            {
+                "month": pd.date_range("2026-01-01", periods=4, freq="MS"),
+                "working_ratio_pct": [55.0, 62.0, 58.0, 65.0],
+                "avg_sea_temp_excel": [26.0, 27.0, 28.0, 27.5],
+                "avg_speed_knots": [13.8, 14.2, 14.0, 14.5],
+            }
+        ),
+        fuel={
+            "total_raw_mt": 10_000.0,
+            "total_vlsfo_equivalent_mt": 10_050.0,
+        },
+        foc_saving_percent=3.0,
+        fuel_price=550.0,
+        payback={
+            "capex_usd": 331_800.0,
+            "payback_years": 2.0,
+            "charter_duration_years": 10,
+            "payback_within_charter": "Yes",
+            "net_surplus_usd": 1_000_000.0,
+            "unrecovered_capex_usd": 0.0,
+        },
+        prepared_by="Smoke Test",
+        management_comment="Representative one-page report.",
+    )
+    assert pdf.startswith(b"%PDF-"), "A4 report output is not a PDF"
+    assert len(pdf) > 4_000, "A4 report output is unexpectedly small"
 
 
 def minimal_noon_workbook(drop_field: str | None = None, reverse_columns: bool = False) -> bytes:
@@ -280,5 +367,20 @@ def run(workbook_path: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("workbook")
-    run(parser.parse_args().workbook)
+    parser.add_argument(
+        "workbook",
+        nargs="?",
+        help="Optional reference workbook for the full processing regression test.",
+    )
+    parser.add_argument(
+        "--app",
+        default=None,
+        help="Optional path to app.py; defaults to app.py beside this test.",
+    )
+    arguments = parser.parse_args()
+    check_app_interface(arguments.app)
+    check_a4_report()
+    if arguments.workbook:
+        run(arguments.workbook)
+    else:
+        print("PASS: simplified app interface checks")
