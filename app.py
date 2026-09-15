@@ -899,7 +899,7 @@ tabs = st.tabs(
     [
         "Operating Profile & Fuel Saving",
         "Payback & Charter Outcome",
-        "A4 Professional Report",
+        "Generate Report",
         "Internal Data_sum",
     ]
 )
@@ -994,7 +994,7 @@ with tabs[1]:
     )
 
 with tabs[2]:
-    st.subheader("A4 Professional Report")
+    st.subheader("Generate Report")
     st.caption(
         "Create a one-page PDF containing the vessel scope, operating profile, fuel basis, "
         "assumed saving, commercial outcome and key limitations."
