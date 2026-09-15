@@ -21,7 +21,7 @@ EXCEL_SPEED_EDGES = np.arange(9.0, 26.0, 1.0)
 EXCEL_POWER_EDGES = np.arange(0.0, 24_000.0, 1_000.0)
 
 # Lower-calorific-value factors used by the controlled Excel FOC method.
-# Every fuel mass is converted to a VLSFO-equivalent mass before PS3 savings
+# Every fuel mass is converted to a VLSFO-equivalent mass before the assumed FOC saving
 # are calculated: equivalent MT = actual MT x fuel LCV / 40.5.
 FUEL_REFERENCE_GRADE = "VLSFO"
 FUEL_GRADE_FIELDS = {
