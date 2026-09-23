@@ -502,7 +502,10 @@ def build_a4_profile_report(
     table_bottom = _draw_two_column_rows(pdf, fuel_rows, margin, section_y - 13, content_width)
 
     section_y = table_bottom - 18
-    _draw_section_title(pdf, "Illustrative commercial outcome", margin, section_y)
+    _draw_section_title(pdf, "Commerical View", margin, section_y)
+    if payback:
+        section_y = table_bottom - 18
+    _draw_section_title(pdf, "Commercial view", margin, section_y)
     if payback:
         payback_value = payback.get("payback_years")
         payback_text = (
@@ -510,17 +513,19 @@ def build_a4_profile_report(
             if payback_value is not None and pd.notna(payback_value)
             else "No payback under current assumptions"
         )
-        end_value = float(payback.get("net_surplus_usd", 0.0) or 0.0) - float(
-            payback.get("unrecovered_capex_usd", 0.0) or 0.0
-        )
-        duration = _number(payback.get("charter_duration_years"), 0, " years")
+        end_value = float(payback.get("net_surplus_usd", 0.0) or 0.0)
+        unrecovered = float(payback.get("unrecovered_capex_usd", 0.0) or 0.0)
         commercial_rows = [
             ("Project CAPEX", f"US$ {_number(payback.get('capex_usd'), 0)}"),
-            ("Simple payback (fuel less OPEX)", payback_text),
-            ("VLSFO reference price", f"US$ {_number(fuel_price, 0)}/t"),
-            ("Additional annual OPEX", f"US$ {_number(payback.get('annual_additional_opex_usd', 0), 0)}/year"),
-            ("Assumed benefit period (charter)", duration),
-            ("Net cash flow less CAPEX (undiscounted)", f"US$ {_number(end_value, 0)}"),
+            ("Simple payback period", payback_text),
+            ("Charter assessment period",
+             _number(payback.get("charter_duration_years"), 0, " years")),
+            ("Payback within charter",
+             str(payback.get("payback_within_charter", "Not available"))),
+            ("Projected net benefit at charter end",
+             f"US$ {_number(end_value, 0)}"),
+            ("Unrecovered CAPEX at charter end",
+             f"US$ {_number(unrecovered, 0)}"),
         ]
     else:
         commercial_rows = [
