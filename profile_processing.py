@@ -1054,17 +1054,43 @@ def monthly_summary(segments: pd.DataFrame) -> pd.DataFrame:
 
 
 def monthly_summary_excel(data_sum: pd.DataFrame) -> pd.DataFrame:
-    """Calculate the 12-row Profile graph-source table from internal Data_sum."""
+    """Summarise reporting months; apportion propelling intervals across month ends.
+
+    The older workbook-style ratio assigned an entire noon interval to its
+    report month, then divided by the span from the first to last report in
+    that month. This could exceed 100%. A share above 100% from overlapping
+    source intervals is instead left unavailable for source-data review.
+    """
     valid = data_sum[data_sum["timestamp"].notna()].copy()
     if valid.empty:
         return pd.DataFrame()
     valid["month_start"] = valid["timestamp"].dt.to_period("M").dt.to_timestamp()
+    overall_start = valid["timestamp"].min()
+    overall_end = valid["timestamp"].max()
+    monthly_propelling: dict[pd.Timestamp, float] = {}
+    noon = valid[valid["source"].eq("Noon")]
+    for _, report in noon.iterrows():
+        hours = pd.to_numeric(report["duration_hours"], errors="coerce")
+        if pd.isna(hours) or hours <= 0 or hours > 72:
+            continue
+        end = report["timestamp"]
+        cursor = max(end - pd.Timedelta(hours=float(hours)), overall_start)
+        end = min(end, overall_end)
+        while cursor < end:
+            month = cursor.to_period("M").to_timestamp()
+            boundary = month + pd.offsets.MonthBegin(1)
+            piece_end = min(end, boundary)
+            monthly_propelling[month] = monthly_propelling.get(month, 0.0) + (
+                piece_end - cursor
+            ).total_seconds() / 3600
+            cursor = piece_end
     rows: list[dict[str, Any]] = []
     for month, group in valid.groupby("month_start", sort=True):
-        start = group["timestamp"].min()
-        end = group["timestamp"].max()
+        start = max(overall_start, month)
+        end = min(overall_end, month + pd.offsets.MonthBegin(1))
         available = (end - start).total_seconds() / 3600
-        propelling = float(group["duration_hours"].fillna(0).sum())
+        propelling = monthly_propelling.get(month, 0.0)
+        intervals_consistent = available > 0 and propelling <= available + 1e-7
         rows.append(
             {
                 "month": month,
@@ -1072,7 +1098,8 @@ def monthly_summary_excel(data_sum: pd.DataFrame) -> pd.DataFrame:
                 "data_end": end,
                 "available_hours": available,
                 "propelling_hours": propelling,
-                "working_ratio_pct": propelling / available * 100 if available > 0 else np.nan,
+                "working_ratio_pct": propelling / available * 100 if intervals_consistent else np.nan,
+                "propelling_share_valid": bool(intervals_consistent),
                 "avg_speed_knots": group["speed_knots"].mean(),
                 "avg_sea_temp_excel": group["data_sum_sea_temp"].mean(),
                 "avg_actual_sea_temp_c": group["actual_sea_temp_c"].mean(),
