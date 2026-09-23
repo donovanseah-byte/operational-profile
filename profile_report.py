@@ -420,8 +420,7 @@ def build_a4_profile_report(
         height - 20 * mm,
         "Operating profile from noon, departure and arrival reports; commercial inputs are assumptions",
     )
-    pdf.setFont(FONT_BOLD, 7.5)
-    pdf.drawRightString(width - margin, height - 24 * mm, "ILLUSTRATIVE SCENARIO")
+    
 
     meta_y = height - 35 * mm
     pdf.setFillColor(DARK)
