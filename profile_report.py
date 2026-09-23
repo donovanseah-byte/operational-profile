@@ -185,7 +185,7 @@ def _draw_two_column_rows(
 
 def _dominant_band(profile, x_width: float, x_unit: str) -> tuple[str, float]:
     matrix = profile.percent
-    if matrix.empty or not np.isfinite(matrix.to_numpy(dtype=float)).any():
+    if matrix.empty or not np.isfinite(matrix.to_numpy(dtype=float)).any() or not (matrix.to_numpy(dtype=float) > 0).any():
         return "Not available", 0.0
     values = matrix.to_numpy(dtype=float)
     flat_index = int(np.nanargmax(values))
@@ -197,10 +197,10 @@ def _dominant_band(profile, x_width: float, x_unit: str) -> tuple[str, float]:
         x_text = f"{x_start:,.0f}-<{x_start + x_width:,.0f} {x_unit}"
     else:
         x_text = f"{x_start:g}-<{x_start + x_width:g} {x_unit}"
-    return f"{x_text} at {draft_start:g}-<{draft_start + 1:g} m draft", share
+    return f"{x_text} / {draft_start:g}-<{draft_start + 1:g} m", share
 
 
-def _draw_profile_distribution(
+def _draw_profile_heatmap(
     pdf: canvas.Canvas,
     profile,
     x: float,
@@ -209,68 +209,72 @@ def _draw_profile_distribution(
     title: str,
     x_axis_title: str,
     band_width: float,
-    colour,
+    common_max_pct: float,
 ) -> None:
-    """Draw a compact bar graph of propelling-hour share by operating band."""
-    matrix = profile.percent.copy()
+    """Draw the complete fixed-bin speed/draught or power/draught matrix."""
+    matrix = profile.percent.copy().apply(pd.to_numeric, errors="coerce")
     pdf.setFillColor(DARK)
     pdf.setFont(FONT_BOLD, 7.8)
     pdf.drawString(x, top_y, title)
-    if matrix.empty:
+    if matrix.empty or not (matrix.to_numpy(dtype=float) > 0).any():
         pdf.setFont(FONT, 7.2)
         pdf.setFillColor(MID_GREY)
-        pdf.drawString(x, top_y - 18, "No operating-profile data available")
+        pdf.drawString(x, top_y - 30, "No eligible operating-profile data")
         return
+    values = matrix.to_numpy(dtype=float)
+    n_rows, n_columns = values.shape
+    peak = np.unravel_index(int(np.nanargmax(values)), values.shape)
+    plot_x = x + 24
+    plot_top = top_y - 15
+    plot_width = width - 28
+    plot_height = 94
+    cell_width = plot_width / n_columns
+    cell_height = plot_height / n_rows
+    empty = (250, 251, 253)
+    pale = (221, 237, 247)
+    dark = (31, 93, 157)
+    for row in range(n_rows):
+        for column in range(n_columns):
+            value = values[row, column]
+            if not np.isfinite(value) or value <= 0:
+                rgb = empty
+            else:
+                ratio = min(value / max(common_max_pct, 1e-9), 1.0) ** 0.7
+                rgb = tuple(int(a + (b - a) * ratio) for a, b in zip(pale, dark))
+            cell_x = plot_x + column * cell_width
+            cell_y = plot_top - (row + 1) * cell_height
+            pdf.setFillColor(colors.Color(*(channel / 255 for channel in rgb)))
+            pdf.setStrokeColor(colors.white)
+            pdf.setLineWidth(0.35)
+            pdf.rect(cell_x, cell_y, cell_width, cell_height, fill=1, stroke=1)
+    # An amber frame marks the cell with the greatest share of eligible hours.
+    pdf.setStrokeColor(colors.HexColor("#D28B00"))
+    pdf.setLineWidth(1.8)
+    pdf.rect(
+        plot_x + peak[1] * cell_width - 0.3,
+        plot_top - (peak[0] + 1) * cell_height - 0.3,
+        cell_width + 0.6, cell_height + 0.6, fill=0, stroke=1,
+    )
 
-    totals = matrix.sum(axis=0).astype(float)
-    active = np.where(totals.to_numpy() > 0)[0]
-    if not len(active):
-        pdf.setFont(FONT, 7.2)
-        pdf.setFillColor(MID_GREY)
-        pdf.drawString(x, top_y - 18, "No operating-profile data available")
-        return
-
-    totals = totals.iloc[active[0] : active[-1] + 1]
-    values = totals.to_numpy(dtype=float)
-    maximum = max(float(values.max()), 1.0)
-    y_max = max(10.0, math.ceil(maximum / 10.0) * 10.0)
-    plot_x = x + 28
-    plot_y = top_y - 67
-    plot_width = width - 34
-    plot_height = 48
-
-    pdf.setStrokeColor(colors.HexColor("#D9DEE7"))
     pdf.setFillColor(MID_GREY)
-    pdf.setFont(FONT, 5.4)
-    for tick in (0, y_max / 2, y_max):
-        tick_y = plot_y + plot_height * tick / y_max
-        pdf.line(plot_x, tick_y, plot_x + plot_width, tick_y)
-        pdf.drawRightString(plot_x - 3, tick_y - 2, f"{tick:.0f}%")
-
-    slot_width = plot_width / max(len(values), 1)
-    bar_width = max(2.0, slot_width * 0.66)
-    pdf.setFillColor(colour)
-    for index, value in enumerate(values):
-        bar_height = plot_height * max(value, 0.0) / y_max
-        bar_x = plot_x + index * slot_width + (slot_width - bar_width) / 2
-        pdf.rect(bar_x, plot_y, bar_width, bar_height, fill=1, stroke=0)
-
-    labels = list(totals.index)
-    label_step = max(1, math.ceil(len(labels) / 6))
-    pdf.setFillColor(MID_GREY)
-    pdf.setFont(FONT, 5.4)
-    for index in range(0, len(labels), label_step):
-        start = float(labels[index])
-        label = f"{start:,.0f}" if band_width >= 100 else f"{start:g}"
-        pdf.drawCentredString(plot_x + (index + 0.5) * slot_width, plot_y - 7, label)
-
-    pdf.setFont(FONT_BOLD, 5.9)
-    pdf.drawCentredString(plot_x + plot_width / 2, plot_y - 15, x_axis_title)
-    pdf.saveState()
-    pdf.translate(x + 7, plot_y + plot_height / 2)
-    pdf.rotate(90)
-    pdf.drawCentredString(0, 0, "Propelling hours (%)")
-    pdf.restoreState()
+    pdf.setFont(FONT, 5.1)
+    for row, label in enumerate(matrix.index):
+        pdf.drawRightString(plot_x - 3, plot_top - (row + 0.5) * cell_height - 2, str(label))
+    label_step = max(1, math.ceil(n_columns / 6))
+    for column in range(0, n_columns, label_step):
+        label = float(matrix.columns[column])
+        number = f"{label/1000:g}k" if band_width >= 1000 and label >= 1000 else f"{label:g}"
+        pdf.drawCentredString(plot_x + (column + 0.5) * cell_width, plot_top - plot_height - 8, number)
+    pdf.setFont(FONT_BOLD, 5.7)
+    pdf.drawCentredString(plot_x + plot_width / 2, plot_top - plot_height - 17, x_axis_title)
+    main_band, main_share = _dominant_band(profile, band_width, "kW" if band_width >= 100 else "kn")
+    pdf.setFillColor(AMBER)
+    pdf.setFont(FONT_BOLD, 6.0)
+    main_label = f"Main: {main_band} ({main_share:.1f}%)"
+    if stringWidth(main_label, FONT_BOLD, 6.0) > width:
+        _draw_wrapped(pdf, main_label, x, top_y - 139, width, FONT_BOLD, 6.0, 7, AMBER, max_lines=1)
+    else:
+        pdf.drawString(x, top_y - 139, main_label)
 
 
 def _draw_monthly_line_chart(
@@ -326,9 +330,10 @@ def _draw_monthly_line_chart(
 
     dates = pd.to_datetime(monthly["month"], errors="coerce")
     count = len(values)
-    points: list[tuple[float, float]] = []
+    points: list[tuple[float, float] | None] = []
     for index, value in enumerate(values):
         if not math.isfinite(value):
+            points.append(None)
             continue
         point_x = plot_x + (plot_width * index / max(count - 1, 1))
         point_y = plot_y + plot_height * (value - y_min) / (y_max - y_min)
@@ -337,10 +342,12 @@ def _draw_monthly_line_chart(
     pdf.setStrokeColor(BLUE)
     pdf.setLineWidth(1.25)
     for first, second in zip(points, points[1:]):
-        pdf.line(first[0], first[1], second[0], second[1])
+        if first is not None and second is not None:
+            pdf.line(first[0], first[1], second[0], second[1])
     pdf.setFillColor(BLUE)
-    for point_x, point_y in points:
-        pdf.circle(point_x, point_y, 1.4, fill=1, stroke=0)
+    for point in points:
+        if point is not None:
+            pdf.circle(point[0], point[1], 1.4, fill=1, stroke=0)
 
     label_step = max(1, math.ceil(count / 6))
     pdf.setFillColor(MID_GREY)
@@ -373,7 +380,7 @@ def build_a4_profile_report(
     buffer = io.BytesIO()
     width, height = A4
     pdf = canvas.Canvas(buffer, pagesize=A4, pageCompression=1)
-    pdf.setTitle(f"{vessel_name} Operating Profile and FOC Saving Assessment")
+    pdf.setTitle(f"{vessel_name} Operating Profile and Illustrative Retrofit Payback")
     pdf.setAuthor(prepared_by or "Vessel Operating Profile App")
 
     margin = 13 * mm
@@ -382,16 +389,16 @@ def build_a4_profile_report(
     pdf.setFillColor(NAVY)
     pdf.rect(0, height - 28 * mm, width, 28 * mm, fill=1, stroke=0)
     pdf.setFillColor(colors.white)
-    pdf.setFont(FONT_BOLD, 18)
-    pdf.drawString(margin, height - 13 * mm, "Vessel Operating Profile and FOC Saving Assessment")
+    pdf.setFont(FONT_BOLD, 16)
+    pdf.drawString(margin, height - 13 * mm, "Vessel Operating Profile and Illustrative Retrofit Payback")
     pdf.setFont(FONT, 8.5)
     pdf.drawString(
         margin,
         height - 20 * mm,
-        "Marine performance summary generated from Noon, Departure and Arrival reports",
+        "Operating profile from noon, departure and arrival reports; commercial inputs are assumptions",
     )
     pdf.setFont(FONT_BOLD, 7.5)
-    pdf.drawRightString(width - margin, height - 24 * mm, "A4 DECISION-SUPPORT REPORT")
+    pdf.drawRightString(width - margin, height - 24 * mm, "ILLUSTRATIVE SCENARIO")
 
     meta_y = height - 35 * mm
     pdf.setFillColor(DARK)
@@ -413,28 +420,16 @@ def build_a4_profile_report(
     if prepared_by.strip():
         pdf.drawRightString(width - margin, meta_y, f"Prepared by: {prepared_by.strip()[:55]}")
 
-    pdf.setFillColor(colors.HexColor("#FFF4D6"))
-    pdf.setStrokeColor(colors.HexColor("#E6B94A"))
-    callout_y = meta_y - 39
-    pdf.roundRect(margin, callout_y, content_width, 22, 4, fill=1, stroke=1)
-    pdf.setFillColor(AMBER)
-    pdf.setFont(FONT_BOLD, 8)
-    pdf.drawString(
-        margin + 8,
-        callout_y + 8,
-        "Commercial scenario: the FOC saving percentage is user-defined and is not a verified post-retrofit performance result.",
-    )
-
     total_hours = float(overall.get("total_hours", 0.0) or 0.0)
     analysis_days = total_hours / 24 if total_hours > 0 else float("nan")
-    card_y = callout_y - 70
+    card_y = meta_y - 74
     card_gap = 6
     card_width = (content_width - 3 * card_gap) / 4
     card_values = [
-        ("Report span", _number(analysis_days, 1, " days")),
-        ("Noon report intervals", f"{int(noon_records):,}"),
+        ("Elapsed reporting span", _number(analysis_days, 1, " days")),
+        ("Noon reports loaded", f"{int(noon_records):,}"),
         ("M/E propelling hours", _number(overall.get("propelling_hours"), 1, " h")),
-        ("FOC saving assumption", _number(foc_saving_percent, 2, "%")),
+        ("Assumed fuel saving", _number(foc_saving_percent, 2, "%")),
     ]
     for index, (label, value) in enumerate(card_values):
         _draw_card(
@@ -447,41 +442,67 @@ def build_a4_profile_report(
             value,
         )
 
-    speed_band, speed_share = _dominant_band(speed_profile, 1.0, "kn")
-    power_band, power_share = _dominant_band(power_profile, 1_000.0, "kW")
-
     section_y = card_y - 24
-    _draw_section_title(pdf, "Operating profile", margin, section_y)
+    _draw_section_title(pdf, "Speed-draught and engine power-draught profiles", margin, section_y)
     operating_rows = [
-        ("Mean STW while propelling", _number(overall.get("avg_speed_knots"), 2, " kn")),
-        ("Maximum reported STW", _number(overall.get("max_noon_speed_knots"), 2, " kn")),
-        ("Propelling time ratio", _number(overall.get("working_ratio_pct"), 1, "%")),
-        ("Maximum reported M/E output", _number(overall.get("max_noon_me_output_kw"), 0, " kW")),
-        ("Principal STW/mean-draft condition", f"{speed_band} ({speed_share:.1f}%)"),
-        ("Principal M/E output/mean-draft condition", f"{power_band} ({power_share:.1f}%)"),
+        ("Highest interval-average STW", _number(overall.get("max_noon_speed_knots"), 2, " kn")),
+        ("Highest reported main-engine power", _number(overall.get("max_noon_me_output_kw"), 0, " kW")),
     ]
     table_bottom = _draw_two_column_rows(pdf, operating_rows, margin, section_y - 13, content_width)
+    heatmap_top = table_bottom - 12
+    heatmap_gap = 11
+    heatmap_width = (content_width - heatmap_gap) / 2
+    heatmaps = [
+        (speed_profile, margin, heatmap_width, "STW / mean draught", "STW (kn)", 1.0),
+        (power_profile, margin + heatmap_width + heatmap_gap, heatmap_width,
+         "M/E power / mean draught", "M/E power (kW)", 1000.0),
+    ]
+    peaks = [
+        float(np.nanmax(item[0].percent.to_numpy(dtype=float)))
+        for item in heatmaps if not item[0].percent.empty
+        and np.isfinite(item[0].percent.to_numpy(dtype=float)).any()
+    ]
+    common_max_pct = max(peaks, default=1.0)
+    for profile, plot_x, plot_width, title, axis_title, band_width in heatmaps:
+        _draw_profile_heatmap(
+            pdf, profile, plot_x, heatmap_top, plot_width, title,
+            axis_title, band_width, common_max_pct,
+        )
+    caption = "Darker cells = more eligible propelling hours; amber = most frequent condition."
+    power_columns = power_profile.percent.columns
+    max_reported_power = float(overall.get("max_noon_me_output_kw", float("nan")))
+    if len(power_columns) and math.isfinite(max_reported_power):
+        upper_power_bin = float(power_columns[-1]) + 1000
+        if max_reported_power >= upper_power_bin:
+            caption += (f" Power map ends at <{upper_power_bin:,.0f} kW; "
+                        f"max {max_reported_power:,.0f} kW is outside.")
+    pdf.setFillColor(MID_GREY)
+    pdf.setFont(FONT, 6.2)
+    if stringWidth(caption, FONT, 6.2) > content_width:
+        raise ValueError("Heatmap range note is too long for the A4 report")
+    pdf.drawString(margin, heatmap_top - 152, caption)
+    table_bottom = heatmap_top - 155
 
     equivalent_fuel = float(fuel.get("total_vlsfo_equivalent_mt", 0.0) or 0.0)
     raw_fuel = float(fuel.get("total_raw_mt", 0.0) or 0.0)
     period_saving = equivalent_fuel * foc_saving_percent / 100
-    period_cost_saving = period_saving * fuel_price
     annual_factor = (365 * 24 / total_hours) if total_hours > 0 else float("nan")
-    annual_fuel_saving = period_saving * annual_factor
-    annual_cost_saving = annual_fuel_saving * fuel_price
+    annual_cost_saving = period_saving * annual_factor * fuel_price
+    if payback and payback.get("annual_gross_saving_usd") is not None:
+        annual_cost_saving = float(payback["annual_gross_saving_usd"])
 
     section_y = table_bottom - 18
     _draw_section_title(pdf, "M/E fuel consumption and assumed saving", margin, section_y)
     fuel_rows = [
-        ("VLSFO-equivalent M/E fuel", _number(equivalent_fuel, 2, " MT")),
-        ("Assumed period FOC reduction", _number(period_saving, 2, " MT")),
-        ("Projected annual FOC reduction", _number(annual_fuel_saving, 2, " MT/year")),
-        ("Projected annual bunker-cost saving", f"US$ {_number(annual_cost_saving, 0)}/year"),
+        ("Reported M/E fuel, all grades", _number(raw_fuel, 2, " t")),
+        ("M/E fuel, VLSFO-energy equivalent", _number(equivalent_fuel, 2, " t")),
+        ("Assumed FOC Saving Reduction", _number(period_saving, 2, " t equiv.")),
+        ("Illustrative annual fuel-cost saving", f"US$ {_number(annual_cost_saving, 0)}/year"),
     ]
     table_bottom = _draw_two_column_rows(pdf, fuel_rows, margin, section_y - 13, content_width)
 
     section_y = table_bottom - 18
-    _draw_section_title(pdf, "Commercial view", margin, section_y)
+    _draw_section_title(pdf, "Illustrative commercial outcome", margin, section_y)
     if payback:
         payback_value = payback.get("payback_years")
         payback_text = (
@@ -489,15 +510,17 @@ def build_a4_profile_report(
             if payback_value is not None and pd.notna(payback_value)
             else "No payback under current assumptions"
         )
-        end_value = float(payback.get("net_surplus_usd", 0.0) or 0.0)
-        unrecovered = float(payback.get("unrecovered_capex_usd", 0.0) or 0.0)
+        end_value = float(payback.get("net_surplus_usd", 0.0) or 0.0) - float(
+            payback.get("unrecovered_capex_usd", 0.0) or 0.0
+        )
+        duration = _number(payback.get("charter_duration_years"), 0, " years")
         commercial_rows = [
             ("Project CAPEX", f"US$ {_number(payback.get('capex_usd'), 0)}"),
-            ("Simple payback period", payback_text),
-            ("Charter assessment period", _number(payback.get("charter_duration_years"), 0, " years")),
-            ("Payback within charter", str(payback.get("payback_within_charter", "Not available"))),
-            ("Projected net benefit at charter end", f"US$ {_number(end_value, 0)}"),
-            ("Unrecovered CAPEX at charter end", f"US$ {_number(unrecovered, 0)}"),
+            ("Simple payback (fuel less OPEX)", payback_text),
+            ("VLSFO reference price", f"US$ {_number(fuel_price, 0)}/t"),
+            ("Additional annual OPEX", f"US$ {_number(payback.get('annual_additional_opex_usd', 0), 0)}/year"),
+            ("Assumed benefit period (charter)", duration),
+            ("Net cash flow less CAPEX (undiscounted)", f"US$ {_number(end_value, 0)}"),
         ]
     else:
         commercial_rows = [
@@ -508,75 +531,30 @@ def build_a4_profile_report(
 
     section_y = table_bottom - 18
     _draw_section_title(pdf, "Monthly operating trends", margin, section_y)
-    monthly_chart_height = 52
+    monthly_chart_height = 56
     chart_top = section_y - 15
     _draw_monthly_line_chart(
         pdf, monthly, "working_ratio_pct", margin, chart_top, content_width,
-        monthly_chart_height, "Monthly reported propelling ratio", "%",
+        monthly_chart_height, "Monthly propelling hours / elapsed hours", "%",
     )
-    chart_top -= monthly_chart_height + 2
+    chart_top -= monthly_chart_height + 11
     _draw_monthly_line_chart(
         pdf, monthly, "avg_sea_temp_excel", margin, chart_top, content_width,
-        monthly_chart_height, "Monthly mean reported sea-water temperature", " C",
+        monthly_chart_height, "Monthly mean reported seawater temperature", " °C",
     )
-    chart_top -= monthly_chart_height + 2
+    chart_top -= monthly_chart_height + 11
     _draw_monthly_line_chart(
         pdf, monthly, "avg_speed_knots", margin, chart_top, content_width,
-        monthly_chart_height, "Monthly mean reported speed", " kn",
+        monthly_chart_height, "Monthly mean reported interval STW", " kn",
     )
 
-    section_y = chart_top - monthly_chart_height - 7
-    _draw_section_title(pdf, "Interpretation and limitations", margin, section_y)
-    standard_comment = (
-        "This report describes the vessel's observed operating envelope and applies the selected FOC saving "
-        "assumption to M/E fuel consumed at sea after LCV normalisation to a VLSFO-equivalent basis. Annualised "
-        "and payback values assume the reported operating profile remains representative. D/G, auxiliary boiler, "
-        "cylinder oil and non-propelling fuel are excluded."
-    )
-    next_y = _draw_wrapped(
-        pdf,
-        standard_comment,
-        margin,
-        section_y - 17,
-        content_width,
-        size=7.8,
-        leading=9.4,
-        colour=DARK,
-        max_lines=4,
-    )
+    chart_bottom = chart_top - monthly_chart_height
+    if chart_bottom < 42:
+        raise ValueError("A4 report charts would overlap the footer")
     if management_comment.strip():
-        _draw_wrapped(
-            pdf,
-            f"Management comment: {management_comment.strip()}",
-            margin,
-            next_y - 2,
-            content_width,
-            font=FONT_ITALIC,
-            size=7.7,
-            leading=9.2,
-            colour=MID_GREY,
-            max_lines=2,
-        )
-
-    methodology_y = 42
-    pdf.setFillColor(PALE_BLUE)
-    pdf.setStrokeColor(LINE)
-    pdf.roundRect(margin, methodology_y, content_width, 47, 4, fill=1, stroke=1)
-    pdf.setFillColor(NAVY)
-    pdf.setFont(FONT_BOLD, 7.4)
-    pdf.drawString(margin + 8, methodology_y + 34, "METHOD SUMMARY")
-    _draw_wrapped(
-        pdf,
-        "Noon-report intervals are screened and M/E propelling hours are allocated by STW/mean-draft and M/E output/mean-draft condition. "
-        "M/E fuel at sea is normalised by lower calorific value (LCV) before the saving and commercial calculations are applied.",
-        margin + 8,
-        methodology_y + 23,
-        content_width - 16,
-        size=6.9,
-        leading=8.0,
-        colour=DARK,
-        max_lines=3,
-    )
+        _draw_wrapped(pdf, f"Comment: {management_comment.strip()}", margin,
+                      39, content_width, font=FONT_ITALIC, size=6.5,
+                      leading=7.4, colour=MID_GREY, max_lines=1)
 
     pdf.setFillColor(MID_GREY)
     pdf.setFont(FONT, 6.7)
