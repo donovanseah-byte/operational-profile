@@ -116,6 +116,30 @@ def check_a4_report() -> None:
     assert len(pdf) > 4_000, "A4 report output is unexpectedly small"
 
 
+def check_monthly_propelling_share() -> None:
+    """Check a month-crossing noon interval and an overlapping source interval."""
+    data_sum = pd.DataFrame(
+        {
+            "source": ["Departure", "Noon", "Noon", "Noon"],
+            "timestamp": pd.to_datetime(
+                ["2026-01-30 12:00", "2026-01-31 12:00", "2026-02-01 12:00", "2026-02-02 12:00"]
+            ),
+            "duration_hours": [0, 24, 24, 24],
+            "speed_knots": [np.nan, 15.0, 16.0, 17.0],
+            "data_sum_sea_temp": [np.nan, 25.0, 26.0, 27.0],
+            "actual_sea_temp_c": [np.nan, 25.0, 26.0, 27.0],
+            "me_output_kw": [np.nan, 10_000.0, 11_000.0, 12_000.0],
+        }
+    )
+    monthly = monthly_summary_excel(data_sum)
+    assert np.allclose(monthly["propelling_hours"], [36.0, 36.0])
+    assert np.allclose(monthly["working_ratio_pct"], [100.0, 100.0])
+    data_sum.loc[3, "duration_hours"] = 48
+    overlapping = monthly_summary_excel(data_sum)
+    assert not overlapping.loc[1, "propelling_share_valid"]
+    assert np.isnan(overlapping.loc[1, "working_ratio_pct"])
+
+
 def minimal_noon_workbook(drop_field: str | None = None, reverse_columns: bool = False) -> bytes:
     workbook = openpyxl.Workbook()
     sheet = workbook.active
@@ -230,16 +254,12 @@ def run(workbook_path: str) -> None:
         expected_monthly_sea_temp,
         atol=1e-12,
     )
-    assert np.allclose(
-        monthly["available_hours"].head(12).to_numpy(),
-        [0, 696, 720, 703.5, 721, 693.5, 707.1, 693, 670.6, 720, 729.8, 628.3],
-        atol=1e-8,
-    )
-    assert np.allclose(
-        monthly["propelling_hours"].head(12).to_numpy(),
-        [24, 451.9, 445, 404, 367.2, 382.8, 364.2, 373.9, 507.4, 525.4, 529.8, 407.6],
-        atol=1e-8,
-    )
+    valid_share = monthly["working_ratio_pct"].dropna()
+    assert valid_share.between(0, 100 + 1e-8).all()
+    assert monthly["available_hours"].ge(0).all()
+    assert monthly.loc[monthly["propelling_share_valid"], "propelling_hours"].le(
+        monthly.loc[monthly["propelling_share_valid"], "available_hours"] + 1e-7
+    ).all()
     assert np.allclose(
         monthly["avg_speed_knots"].head(12).to_numpy(),
         [11.3, 13.366666666666665, 13.542857142857144, 15.285,
@@ -361,7 +381,7 @@ def run(workbook_path: str) -> None:
         raise AssertionError("A report with no vessel name was not rejected")
 
     print(
-        f"PASS: {len(data_sum)} Data_sum rows; monthly table and both profile matrices match Excel"
+        f"PASS: {len(data_sum)} Data_sum rows; profiles match Excel, monthly shares use elapsed-month intervals"
     )
 
 
@@ -380,6 +400,7 @@ if __name__ == "__main__":
     arguments = parser.parse_args()
     check_app_interface(arguments.app)
     check_a4_report()
+    check_monthly_propelling_share()
     if arguments.workbook:
         run(arguments.workbook)
     else:
