@@ -177,11 +177,11 @@ def excel_monthly_display(monthly: pd.DataFrame) -> pd.DataFrame:
             "MONTH": monthly["month"].dt.month,
             "Period Start": monthly["data_start"].dt.strftime("%d/%m/%Y"),
             "Period End": monthly["data_end"].dt.strftime("%d/%m/%Y"),
-            "TTL[h]": monthly["available_hours"],
+            "Elapsed Time [h]": monthly["available_hours"],
             "Reported Propelling Hours [h]": monthly["propelling_hours"],
-            "Reported Propelling Ratio [%]": monthly["working_ratio_pct"],
-            "Mean Reported Sea-Water Temperature [deg C]": monthly["avg_sea_temp_excel"],
-            "Mean Reported Speed [kn]": monthly["avg_speed_knots"],
+            "Propelling Share of Elapsed Time [%]": monthly["working_ratio_pct"],
+            "Mean Reported Seawater Temperature [deg C]": monthly["avg_sea_temp_excel"],
+            "Mean Reported Interval STW [kn]": monthly["avg_speed_knots"],
         }
     )
 
@@ -191,13 +191,13 @@ def show_excel_monthly_table(monthly: pd.DataFrame) -> pd.DataFrame:
     st.dataframe(
         table.style.format(
             {
-                "TTL[h]": "{:.1f}",
+                "Elapsed Time [h]": "{:.1f}",
                 "Reported Propelling Hours [h]": "{:.1f}",
-                "Reported Propelling Ratio [%]": "{:.0f}%",
-                "Mean Reported Sea-Water Temperature [deg C]": "{:.6f}",
-                "Mean Reported Speed [kn]": "{:.5f}",
+                "Propelling Share of Elapsed Time [%]": "{:.0f}%",
+                "Mean Reported Seawater Temperature [deg C]": "{:.6f}",
+                "Mean Reported Interval STW [kn]": "{:.5f}",
             },
-            na_rep="#DIV/0!",
+            na_rep="Needs review",
         ),
         hide_index=True,
         use_container_width=True,
@@ -213,19 +213,19 @@ def plot_excel_monthly_graphs(table: pd.DataFrame, key_prefix: str):
     )
     chart_specs = [
         (
-            "Reported Propelling Ratio [%]",
-            "Monthly Reported Propelling Ratio",
-            "Reported propelling ratio [%]",
+            "Propelling Share of Elapsed Time [%]",
+            "Monthly Propelling Share of Elapsed Time",
+            "Propelling share [%]",
         ),
         (
-            "Mean Reported Sea-Water Temperature [deg C]",
-            "Monthly Mean Reported Sea-Water Temperature",
+            "Mean Reported Seawater Temperature [deg C]",
+            "Monthly Mean Reported Seawater Temperature",
             "Mean reported temperature [deg C]",
         ),
         (
-            "Mean Reported Speed [kn]",
-            "Monthly Mean Reported Speed",
-            "Mean reported speed [kn]",
+            "Mean Reported Interval STW [kn]",
+            "Monthly Mean Reported Interval STW",
+            "Mean reported STW [kn]",
         ),
     ]
     for column, title, y_title in chart_specs:
@@ -786,6 +786,7 @@ def render_payback_analysis(
         "analysis_days": analysis_days,
         "period_fuel_saving_mt": period_fuel_saving_mt,
         "annual_fuel_saving_mt": annual_fuel_saving_mt,
+        "annual_saving_overridden": bool(use_manual_saving),
         "capex_usd": capex_usd,
         "annual_gross_saving_usd": annual_gross_saving_usd,
         "annual_additional_opex_usd": annual_additional_opex_usd,
@@ -876,6 +877,14 @@ power_profile = make_excel_profile(
     segments, "me_output_kw", EXCEL_POWER_EDGES, "power_included"
 )
 monthly = monthly_summary_excel(data_sum)
+if not monthly.empty and "propelling_share_valid" in monthly:
+    invalid_months = monthly.loc[~monthly["propelling_share_valid"], "month"]
+    if not invalid_months.empty:
+        months = ", ".join(invalid_months.dt.strftime("%b %Y"))
+        st.warning(
+            f"Monthly propelling share is unavailable for {months}. Review overlapping "
+            "noon-report intervals or missing time coverage; the app does not cap the value at 100%."
+        )
 overall = excel_overall_summary(data_sum)
 fuel = fuel_consumption_summary(noon, arrival)
 temperature_audit = sea_temperature_audit(data_sum, noon)
@@ -899,7 +908,7 @@ tabs = st.tabs(
     [
         "Operating Profile & Fuel Saving",
         "Payback & Charter Outcome",
-        "Generate Report",
+        "A4 Professional Report",
         "Internal Data_sum",
     ]
 )
@@ -994,7 +1003,7 @@ with tabs[1]:
     )
 
 with tabs[2]:
-    st.subheader("Generate Report")
+    st.subheader("A4 Professional Report")
     st.caption(
         "Create a one-page PDF containing the vessel scope, operating profile, fuel basis, "
         "assumed saving, commercial outcome and key limitations."
