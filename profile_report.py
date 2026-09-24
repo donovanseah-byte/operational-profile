@@ -413,7 +413,7 @@ def build_a4_profile_report(
     pdf.rect(0, height - 28 * mm, width, 28 * mm, fill=1, stroke=0)
     pdf.setFillColor(colors.white)
     pdf.setFont(FONT_BOLD, 16)
-    pdf.drawString(margin, height - 13 * mm, "Vessel Operating Profile and Illustrative Retrofit Payback")
+    pdf.drawString(margin, height - 13 * mm, "Operating Profile + Payback Calculation Report")
     pdf.setFont(FONT, 8.5)
     pdf.drawString(
         margin,
@@ -448,7 +448,7 @@ def build_a4_profile_report(
     card_gap = 6
     card_width = (content_width - 3 * card_gap) / 4
     card_values = [
-        ("Elapsed reporting span", _number(analysis_days, 1, " days")),
+        ("Period covered", _number(analysis_days, 1, " days")),
         ("Noon reports loaded", f"{int(noon_records):,}"),
         ("M/E propelling hours", _number(overall.get("propelling_hours"), 1, " h")),
         ("Assumed fuel saving", _number(foc_saving_percent, 2, "%")),
@@ -465,7 +465,7 @@ def build_a4_profile_report(
         )
 
     section_y = card_y - 24
-    _draw_section_title(pdf, "Speed-draught and engine power-draught profiles", margin, section_y)
+    _draw_section_title(pdf, "Operation Profile", margin, section_y)
     operating_rows = [
         ("Highest interval-average STW", _number(overall.get("max_noon_speed_knots"), 2, " kn")),
         ("Highest reported main-engine power", _number(overall.get("max_noon_me_output_kw"), 0, " kW")),
@@ -475,9 +475,9 @@ def build_a4_profile_report(
     heatmap_gap = 11
     heatmap_width = (content_width - heatmap_gap) / 2
     heatmaps = [
-        (speed_profile, margin, heatmap_width, "STW / mean draught", "STW (kn)", 1.0),
+        (speed_profile, margin, heatmap_width, "Speed profile", "STW (kn)", 1.0),
         (power_profile, margin + heatmap_width + heatmap_gap, heatmap_width,
-         "M/E power / mean draught", "M/E power (kW)", 1000.0),
+         "M/E Output Profile", "M/E power (kW)", 1000.0),
     ]
     peaks = [
         float(np.nanmax(item[0].percent.to_numpy(dtype=float)))
@@ -505,7 +505,7 @@ def build_a4_profile_report(
     pdf.drawString(margin, heatmap_top - 152, caption)
     # The monthly graphs start directly beneath the heatmap caption.
     section_y = heatmap_top - 165
-    _draw_section_title(pdf, "Monthly operating trends", margin, section_y)
+    _draw_section_title(pdf, "Operation Condition", margin, section_y)
     monthly_chart_height = 56
     chart_top = section_y - 15
     _draw_monthly_line_chart(
@@ -535,10 +535,10 @@ def build_a4_profile_report(
     section_y = table_bottom - 18
     _draw_section_title(pdf, "M/E fuel consumption and assumed saving", margin, section_y)
     fuel_rows = [
-        ("Reported M/E fuel, all grades", _number(raw_fuel, 2, " t")),
-        ("M/E fuel, VLSFO-energy equivalent", _number(equivalent_fuel, 2, " t")),
-        ("Assumed FOC Saving Reduction", _number(period_saving, 2, " t equiv.")),
-        ("Illustrative annual fuel-cost saving", f"US$ {_number(annual_cost_saving, 0)}/year"),
+        ("Fuel Oil Consumption", _number(raw_fuel, 2, " t")),
+        ("Fuel Oil Consumption (VLSFO Converted)", _number(equivalent_fuel, 2, " t")),
+        ("Assumed FOC Saving", _number(period_saving, 2, " t equiv.")),
+        ("FOC Save Cost Per Year", f"US$ {_number(annual_cost_saving, 0)}/year"),
     ]
     table_bottom = _draw_two_column_rows(pdf, fuel_rows, margin, section_y - 13, content_width)
 
@@ -556,8 +556,8 @@ def build_a4_profile_report(
         duration = _number(payback.get("charter_duration_years"), 0, " years")
         commercial_rows = [
             ("Project CAPEX", f"US$ {_number(payback.get('capex_usd'), 0)}"),
-            ("Simple payback period", payback_text),
-            ("Charter assessment period", duration),
+            ("Payback period", payback_text),
+            ("Charter period", duration),
             ("Payback within charter", str(payback.get("payback_within_charter", "Not available"))),
             ("Projected net benefit at charter end", f"US$ {_number(end_value, 0)}"),
             ("Unrecovered CAPEX at charter end", f"US$ {_number(unrecovered, 0)}"),
