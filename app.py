@@ -29,7 +29,7 @@ from profile_processing import (
 from profile_report import build_a4_profile_report, safe_report_filename
 
 
-st.set_page_config(page_title="Vessel Operating Profile & Payback Analysis", layout="wide")
+st.set_page_config(page_title="Vessel Operating Profile and Payback Calculation", layout="wide")
 
 
 def uploaded_bytes(uploaded_file) -> bytes:
@@ -79,7 +79,7 @@ def heatmap(profile, title: str, x_title: str, chart_key: str):
             colorscale=[[0, "#ffffff"], [0.25, "#fee2e2"], [1, "#b91c1c"]],
             colorbar={"title": "% of hours"},
             hovertemplate=(
-                f"{x_title}: %{{x}}<br>Draft band start: %{{y}} m<br>"
+                f"{x_title}: %{{x}}<br>Draught band start: %{{y}} m<br>"
                 "Share of eligible propelling hours: %{z:.3f}%<extra></extra>"
             ),
             text=text,
@@ -89,7 +89,7 @@ def heatmap(profile, title: str, x_title: str, chart_key: str):
     figure.update_layout(
         title=title,
         xaxis_title=x_title,
-        yaxis_title="Draft band start [m]",
+        yaxis_title="Draught band start [m]",
         height=max(430, 34 * len(profile.percent.index)),
         margin={"l": 20, "r": 20, "t": 60, "b": 20},
     )
@@ -110,7 +110,7 @@ def _profile_percent_text(value) -> str:
 def styled_profile_table(frame: pd.DataFrame):
     """Apply compact, dependency-free colouring while keeping values numeric."""
     table = frame.copy()
-    table.index.name = "Draft band start [m]"
+    table.index.name = "Draught band start [m]"
     body_rows = [index for index in table.index if index != "Total"]
     body_columns = [column for column in table.columns if column != "Total"]
     body_max = float(table.loc[body_rows, body_columns].max().max()) if body_rows else 0.0
@@ -156,7 +156,7 @@ def styled_profile_table(frame: pd.DataFrame):
 def render_readable_profile_table(profile):
     """Show the complete operating matrix without duplicate band views."""
     table = profile_with_totals(profile.percent)
-    table.index.name = "Draft band start [m]"
+    table.index.name = "Draught band start [m]"
     st.caption(
         "Complete matrix in one view; scroll horizontally for later bands. "
         "Zero cells are shown as -. Darker red means a larger share of total propelling hours."
@@ -178,9 +178,9 @@ def excel_monthly_display(monthly: pd.DataFrame) -> pd.DataFrame:
             "Period Start": monthly["data_start"].dt.strftime("%d/%m/%Y"),
             "Period End": monthly["data_end"].dt.strftime("%d/%m/%Y"),
             "Elapsed Time [h]": monthly["available_hours"],
-            "Reported Propelling Hours [h]": monthly["propelling_hours"],
+            "Reported M/E Propelling Hours [h]": monthly["propelling_hours"],
             "Propelling Share of Elapsed Time [%]": monthly["working_ratio_pct"],
-            "Mean Reported Seawater Temperature [deg C]": monthly["avg_sea_temp_excel"],
+            "Mean Reported Seawater Temperature [Â°C]": monthly["avg_sea_temp_excel"],
             "Mean Reported Interval STW [kn]": monthly["avg_speed_knots"],
         }
     )
@@ -192,9 +192,9 @@ def show_excel_monthly_table(monthly: pd.DataFrame) -> pd.DataFrame:
         table.style.format(
             {
                 "Elapsed Time [h]": "{:.1f}",
-                "Reported Propelling Hours [h]": "{:.1f}",
+                "Reported M/E Propelling Hours [h]": "{:.1f}",
                 "Propelling Share of Elapsed Time [%]": "{:.0f}%",
-                "Mean Reported Seawater Temperature [deg C]": "{:.6f}",
+                "Mean Reported Seawater Temperature [Â°C]": "{:.6f}",
                 "Mean Reported Interval STW [kn]": "{:.5f}",
             },
             na_rep="Needs review",
@@ -218,9 +218,9 @@ def plot_excel_monthly_graphs(table: pd.DataFrame, key_prefix: str):
             "Propelling share [%]",
         ),
         (
-            "Mean Reported Seawater Temperature [deg C]",
+            "Mean Reported Seawater Temperature [Â°C]",
             "Monthly Mean Reported Seawater Temperature",
-            "Mean reported temperature [deg C]",
+            "Mean reported seawater temperature [Â°C]",
         ),
         (
             "Mean Reported Interval STW [kn]",
@@ -257,16 +257,16 @@ def excel_data_sum_display(data_sum: pd.DataFrame, imo_number: str) -> pd.DataFr
             "Vessel": data_sum["vessel"],
             "Time(Noon/SOP/EOP)": data_sum["timestamp"],
             "Duration [h]": data_sum["duration_hours"],
-            "Reported Speed [kn]": data_sum["speed_knots"],
-            "Active Midship Draft [m]": data_sum["draft_m"],
-            "Reported Sea-Water Temperature [deg C]": data_sum["data_sum_sea_temp"],
+            "Reported STW [kn]": data_sum["speed_knots"],
+            "Active Midship Draught [m]": data_sum["draft_m"],
+            "Reported Seawater Temperature [Â°C]": data_sum["data_sum_sea_temp"],
             "YEAR": data_sum["year"],
             "MONTH": data_sum["month"],
             "DAY": data_sum["day"],
             "HOUR": data_sum["hour"],
             "MINUTE": data_sum["minute"],
             "Reported Duration [days]": data_sum["duration_days"],
-            "M/E Output [kW]": data_sum["me_output_kw"],
+            "M/E Power [kW]": data_sum["me_output_kw"],
             "Source": data_sum["source"],
         }
     )
@@ -286,69 +286,69 @@ def render_excel_profile_details(
             {
                 "Vessel Name": vessel_name,
                 "IMO No.": imo_number or "Not provided",
-                "TTL Duration [day]": overall["propelling_hours"] / 24,
-                "Profile TTL [day]": profile.total_hours / 24,
+                "M/E Propelling Duration [days]": overall["propelling_hours"] / 24,
+                "Profile Duration [days]": profile.total_hours / 24,
             }
         ]
     )
     st.dataframe(
         vessel_summary.style.format(
-            {"TTL Duration [day]": "{:.7f}", "Profile TTL [day]": "{:.7f}"}
+            {"M/E Propelling Duration [days]": "{:.7f}", "Profile Duration [days]": "{:.7f}"}
         ),
         hide_index=True,
         use_container_width=True,
     )
-    is_power_profile = "M/E Output" in profile_name
+    is_power_profile = "M/E Power" in profile_name
     if is_power_profile:
         st.metric(
-            "Maximum Reported Noon M/E Output",
+            "Highest Reported M/E Power",
             f"{overall['max_noon_me_output_kw']:,.0f} kW",
         )
         st.caption(
-            "Maximum power is taken only from the uploaded Noon report's M/E output column."
+            "Highest power is taken only from the uploaded Noon report's M/E output column."
         )
     else:
         st.metric(
-            "Maximum Reported Noon Speed",
+            "Highest Reported Interval-Average STW",
             f"{overall['max_noon_speed_knots']:,.2f} kn",
         )
         st.caption(
-            "Maximum speed is taken only from the uploaded Noon report's average-speed column."
+            "Highest STW is taken only from the uploaded Noon report's average-speed column."
         )
 
     overall_row = {
         "Start Year": overall["year"],
         "Period Start": overall["data_start"].strftime("%d/%m/%Y"),
         "Period End": overall["data_end"].strftime("%d/%m/%Y"),
-        "TTL [h]": overall["total_hours"],
-        "Reported Propelling Hours [h]": overall["propelling_hours"],
-        "Reported Propelling Ratio [%]": overall["working_ratio_pct"],
-        "Mean Reported Sea-Water Temperature [deg C]": overall["avg_sea_temp_excel"],
-        "Mean Reported Speed [kn]": overall["avg_speed_knots"],
+        "Elapsed Time [h]": overall["total_hours"],
+        "Reported M/E Propelling Hours [h]": overall["propelling_hours"],
+        "Propelling Share of Elapsed Time [%]": overall["working_ratio_pct"],
+        "Mean Reported Seawater Temperature [Â°C]": overall["avg_sea_temp_excel"],
+        "Mean Reported Interval STW [kn]": overall["avg_speed_knots"],
     }
     if is_power_profile:
-        overall_row["Maximum Reported Noon M/E Output [kW]"] = overall["max_noon_me_output_kw"]
+        overall_row["Highest Reported M/E Power [kW]"] = overall["max_noon_me_output_kw"]
     else:
-        overall_row["Maximum Reported Noon Speed [kn]"] = overall["max_noon_speed_knots"]
+        overall_row["Highest Reported Interval-Average STW [kn]"] = overall["max_noon_speed_knots"]
     overall_table = pd.DataFrame([overall_row])
     overall_formats = {
-        "TTL [h]": "{:.0f}",
-        "Reported Propelling Hours [h]": "{:.1f}",
-        "Reported Propelling Ratio [%]": "{:.2f}%",
-        "Mean Reported Sea-Water Temperature [deg C]": "{:.6f}",
-        "Mean Reported Speed [kn]": "{:.5f}",
+        "Elapsed Time [h]": "{:.0f}",
+        "Reported M/E Propelling Hours [h]": "{:.1f}",
+        "Propelling Share of Elapsed Time [%]": "{:.2f}%",
+        "Mean Reported Seawater Temperature [Â°C]": "{:.6f}",
+        "Mean Reported Interval STW [kn]": "{:.5f}",
     }
     if is_power_profile:
-        overall_formats["Maximum Reported Noon M/E Output [kW]"] = "{:,.0f}"
+        overall_formats["Highest Reported M/E Power [kW]"] = "{:,.0f}"
     else:
-        overall_formats["Maximum Reported Noon Speed [kn]"] = "{:.2f}"
+        overall_formats["Highest Reported Interval-Average STW [kn]"] = "{:.2f}"
     st.dataframe(
         overall_table.style.format(overall_formats),
         hide_index=True,
         use_container_width=True,
     )
     st.caption(
-        "The mean sea-water temperature is calculated from the internally created Data_sum "
+        "The mean seawater temperature is calculated from the internally created Data_sum "
         "'Sea Water Temp.' column. "
         "The source is located from the uploaded two-row title 'Sea Water temperature at noon', "
         "regardless of its Excel column position."
@@ -365,9 +365,9 @@ def render_fuel_summary(fuel: dict, foc_saving_percent: float, fuel_price: float
         ("Arrival", fuel["arrival_by_grade"], fuel["arrival_vlsfo_equivalent_mt"]),
     ):
         row = {"Report": report_name}
-        row.update({f"{grade} [MT]": grade_values[grade] for grade in grades})
-        row["Raw total [MT]"] = sum(grade_values.values())
-        row["VLSFO-equivalent [MT]"] = equivalent
+        row.update({f"{grade} [t]": grade_values[grade] for grade in grades})
+        row["Reported M/E fuel, all grades [t]"] = sum(grade_values.values())
+        row["VLSFO-energy-equivalent M/E fuel [t]"] = equivalent
         fuel_rows.append(row)
     fuel_table = pd.DataFrame(fuel_rows)
     fuel_formats = {
@@ -383,10 +383,10 @@ def render_fuel_summary(fuel: dict, foc_saving_percent: float, fuel_price: float
             [
                 {
                     "Fuel grade": grade,
-                    "Actual total [MT]": fuel["total_by_grade"][grade],
+                    "Reported fuel [t]": fuel["total_by_grade"][grade],
                     "LCV [MJ/kg]": fuel["lcv_mj_per_kg"][grade],
                     "Conversion factor": fuel["conversion_factor"][grade],
-                    "VLSFO-equivalent [MT]": fuel["equivalent_by_grade"][grade],
+                    "VLSFO-energy-equivalent fuel [t]": fuel["equivalent_by_grade"][grade],
                 }
                 for grade in grades
             ]
@@ -394,16 +394,16 @@ def render_fuel_summary(fuel: dict, foc_saving_percent: float, fuel_price: float
         st.dataframe(
             conversion_table.style.format(
                 {
-                    "Actual total [MT]": "{:,.3f}",
+                    "Reported fuel [t]": "{:,.3f}",
                     "LCV [MJ/kg]": "{:.1f}",
                     "Conversion factor": "{:.6f}",
-                    "VLSFO-equivalent [MT]": "{:,.3f}",
+                    "VLSFO-energy-equivalent fuel [t]": "{:,.3f}",
                 }
             ),
             hide_index=True,
             use_container_width=True,
         )
-        st.code("VLSFO-equivalent MT = actual MT x fuel LCV / 40.5")
+        st.code("VLSFO-equivalent fuel [t] = reported fuel [t] Ã— fuel LCV / 40.5")
 
     equivalent_consumption = fuel["total_vlsfo_equivalent_mt"]
     saving_rate = foc_saving_percent / 100
@@ -412,24 +412,24 @@ def render_fuel_summary(fuel: dict, foc_saving_percent: float, fuel_price: float
             {
                 "Item": "Total M/E fuel",
                 "Common basis": "VLSFO equivalent",
-                "Reported Consumption [MT]": fuel["total_raw_mt"],
-                "VLSFO-Equivalent Consumption [MT]": equivalent_consumption,
-                "FOC Saving Assumption [%]": foc_saving_percent,
-                "FOC saving [VLSFO-eq. MT]": equivalent_consumption * saving_rate,
-                "VLSFO price [US$/MT]": fuel_price,
-                "Total Estimated Cost for Uploaded Period [US$]": equivalent_consumption * saving_rate * fuel_price,
+                "Reported M/E fuel, all grades [t]": fuel["total_raw_mt"],
+                "M/E fuel, VLSFO-energy equivalent [t]": equivalent_consumption,
+                "Assumed FOC Saving [%]": foc_saving_percent,
+                "Assumed FOC saving [t VLSFO-eq.]": equivalent_consumption * saving_rate,
+                "VLSFO reference price [US$/t]": fuel_price,
+                "Estimated fuel-cost saving for period [US$]": equivalent_consumption * saving_rate * fuel_price,
             },
         ]
     )
     st.dataframe(
         foc_saving_table.style.format(
             {
-                "Reported Consumption [MT]": "{:,.3f}",
-                "VLSFO-Equivalent Consumption [MT]": "{:,.3f}",
-                "FOC Saving Assumption [%]": "{:.1f}%",
-                "FOC saving [VLSFO-eq. MT]": "{:,.3f}",
-                "VLSFO price [US$/MT]": "{:,.2f}",
-                "Total Estimated Cost for Uploaded Period [US$]": "{:,.2f}",
+                "Reported M/E fuel, all grades [t]": "{:,.3f}",
+                "M/E fuel, VLSFO-energy equivalent [t]": "{:,.3f}",
+                "Assumed FOC Saving [%]": "{:.1f}%",
+                "Assumed FOC saving [t VLSFO-eq.]": "{:,.3f}",
+                "VLSFO reference price [US$/t]": "{:,.2f}",
+                "Estimated fuel-cost saving for period [US$]": "{:,.2f}",
             }
         ),
         hide_index=True,
@@ -544,7 +544,7 @@ def render_payback_analysis(
     fuel_price: float,
 ):
     """Render the payback tab from the existing Profile fuel result."""
-    st.subheader("Fuel-Saving Payback and Charter Outcome")
+    st.subheader("Payback Calculation and Charter Outcome")
     st.caption(
         "The app annualises the assumed FOC saving calculated over the uploaded report period. "
         "CAPEX and other commercial assumptions must be entered manually."
@@ -569,11 +569,11 @@ def render_payback_analysis(
     calculated_annual_fuel_saving_mt = period_fuel_saving_mt * annualisation_factor
 
     basis_columns = st.columns(3)
-    basis_columns[0].metric("Uploaded report span", f"{analysis_days:,.1f} days")
-    basis_columns[1].metric("Period fuel saving", f"{period_fuel_saving_mt:,.3f} MT")
+    basis_columns[0].metric("Period covered", f"{analysis_days:,.1f} days")
+    basis_columns[1].metric("Assumed FOC saving for period", f"{period_fuel_saving_mt:,.3f} t")
     basis_columns[2].metric(
-        "Annualised assumed fuel saving",
-        f"{calculated_annual_fuel_saving_mt:,.3f} MT/year",
+        "Illustrative annual FOC saving",
+        f"{calculated_annual_fuel_saving_mt:,.3f} t/year",
     )
 
     if analysis_days < 180:
@@ -627,7 +627,7 @@ def render_payback_analysis(
 
     if use_manual_saving:
         annual_fuel_saving_mt = st.number_input(
-            "Approved annual fuel saving [VLSFO-equivalent MT/year]",
+            "Approved annual FOC saving [t VLSFO-eq./year]",
             min_value=0.0,
             value=float(calculated_annual_fuel_saving_mt),
             step=1.0,
@@ -802,11 +802,11 @@ def render_payback_analysis(
     }
 
 
-st.title("Vessel Operating Profile & Payback Analysis")
+st.title("Vessel Operating Profile and Payback Calculation")
 st.caption(
     "Upload Noon, Departure and Arrival reports. Files are identified from their two-row column "
     "titles - not fixed Excel column positions. The app builds operating-hour profiles, a monthly "
-    "operating summary, an M/E fuel-saving estimate and a charter-period payback analysis."
+    "operating summary, an assumed M/E FOC saving and a charter-period payback calculation."
 )
 
 with st.expander("How file validation works"):
@@ -850,9 +850,9 @@ with st.sidebar:
     st.header("Operating-profile methodology")
     st.info(
         "Excel-compatible fixed-bin settings\n\n"
-        "Draft: 7-16 m\n\n"
+        "Draught: 7-16 m\n\n"
         "Speed: 9-24 kn\n\n"
-        "M/E output: 0-22,000 kW\n\n"
+        "M/E power: 0-22,000 kW\n\n"
         "Arrival duration: excluded"
     )
     known_imo = {"NYK FUTAGO": "9487524"}
@@ -862,10 +862,10 @@ with st.sidebar:
         help="The three downloaded report formats do not contain an IMO-number field, so confirm this once per run.",
     )
     foc_saving_percent = st.number_input(
-        "FOC Saving Assumption (%)", 0.0, 100.0, 1.0, 0.1
+        "Assumed FOC saving [%]", 0.0, 100.0, 1.0, 0.1
     )
     fuel_price = st.number_input(
-        "VLSFO reference price (US$/MT)", 0.0, 10_000.0, 539.0, 1.0
+        "VLSFO reference price [US$/t]", 0.0, 10_000.0, 539.0, 1.0
     )
 
 data_sum = build_excel_data_sum(noon, departure, arrival)
@@ -892,13 +892,12 @@ if not temperature_audit["valid"]:
     st.error(temperature_audit["message"])
     st.stop()
 
-st.subheader("Calculation Input Summary")
+st.subheader("Operating Data Summary")
 metrics = st.columns(5)
-valid_duration = segments.loc[segments["duration_hours"].gt(0), "duration_hours"].sum()
 metrics[0].metric("Noon records loaded", f"{len(segments):,}")
-metrics[1].metric("Reported Noon propelling hours", f"{valid_duration:,.1f}")
+metrics[1].metric("M/E propelling days", f"{overall['propelling_hours'] / 24:,.1f}")
 metrics[2].metric("Eligible speed-profile hours", f"{speed_profile.total_hours:,.1f}")
-metrics[3].metric("Eligible M/E-profile hours", f"{power_profile.total_hours:,.1f}")
+metrics[3].metric("Eligible M/E-power-profile hours", f"{power_profile.total_hours:,.1f}")
 metrics[4].metric(
     "Share within displayed M/E bands",
     f"{power_profile.percent.to_numpy().sum():.2f}%",
@@ -906,23 +905,23 @@ metrics[4].metric(
 
 tabs = st.tabs(
     [
-        "Operating Profile & Fuel Saving",
-        "Payback & Charter Outcome",
-        "A4 Professional Report",
+        "Operating Profile and FOC Saving",
+        "Payback Calculation and Charter Outcome",
+        "A4 Operating Profile Report",
         "Internal Data_sum",
     ]
 )
 
 with tabs[0]:
-    st.subheader("Speed-Draft Operating Profile")
+    st.subheader("Speedâ€“Draught Profile")
     st.caption(
-        "Locked Excel method: draft rows start at 7-16 m and speed columns start at 9-24 kn. "
+        "Locked Excel method: draught rows start at 7-16 m and speed columns start at 9-24 kn. "
         "A label such as 9 means the 9-<10 kn band. Each cell uses the Excel SUMIFS denominator logic."
     )
     heatmap(
         speed_profile,
-        "Distribution of Propelling Hours by Speed and Draft",
-        "Reported speed band start [kn]",
+        "Speed Profile: Share of Propelling Hours by STW and Draught",
+        "STW band start [kn]",
         "speed-draft-heatmap",
     )
     speed_table = render_readable_profile_table(speed_profile)
@@ -935,23 +934,23 @@ with tabs[0]:
     with st.expander("Show speed-profile summary"):
         render_excel_profile_details(
             speed_profile,
-            "Speed-Draft Profile",
+            "Speedâ€“Draught Profile",
             detected_vessel,
             imo_number,
             overall,
         )
 
     st.divider()
-    st.subheader("M/E Output-Draft Operating Profile")
+    st.subheader("M/E Powerâ€“Draught Profile")
     st.caption(
-        "Locked Excel method: draft rows start at 7-16 m and M/E output columns start at "
+        "Locked Excel method: draught rows start at 7-16 m and M/E power columns start at "
         "0-22,000 kW. A label such as 1000 means the 1,000-<2,000 kW band. "
         "Values above the displayed range remain in the denominator exactly as in Excel."
     )
     heatmap(
         power_profile,
-        "Distribution of Propelling Hours by M/E Output and Draft",
-        "Reported M/E output band start [kW]",
+        "M/E Power Profile: Share of Propelling Hours by Power and Draught",
+        "M/E power band start [kW]",
         "me-output-draft-heatmap",
     )
     power_table = render_readable_profile_table(power_profile)
@@ -961,17 +960,17 @@ with tabs[0]:
         "me_output_draft_profile.csv",
         "text/csv",
     )
-    with st.expander("Show M/E output-profile summary"):
+    with st.expander("Show M/E power-profile summary"):
         render_excel_profile_details(
             power_profile,
-            "M/E Output-Draft Profile",
+            "M/E Powerâ€“Draught Profile",
             detected_vessel,
             imo_number,
             overall,
         )
 
     st.divider()
-    st.subheader("Monthly Operating Summary")
+    st.subheader("Monthly Operating Conditions")
     st.caption(
         "This operating summary is calculated from the internal Data_sum and supplies the three charts. "
         "It runs from the earliest to latest Noon/Departure/Arrival month."
@@ -1003,7 +1002,7 @@ with tabs[1]:
     )
 
 with tabs[2]:
-    st.subheader("A4 Professional Report")
+    st.subheader("A4 Operating Profile Report")
     st.caption(
         "Create a one-page PDF containing the vessel scope, operating profile, fuel basis, "
         "assumed saving, commercial outcome and key limitations."
