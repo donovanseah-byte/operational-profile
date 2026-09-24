@@ -450,7 +450,7 @@ def build_a4_profile_report(
     card_values = [
         ("Period covered", _number(analysis_days, 1, " days")),
         ("Noon reports loaded", f"{int(noon_records):,}"),
-        ("M/E propelling hours", _number(overall.get("propelling_hours"), 1, " h")),
+        ("M/E propelling days", _number(overall.get("propelling_hours") / 24, 1, " days")),
         ("Assumed fuel saving", _number(foc_saving_percent, 2, "%")),
     ]
     for index, (label, value) in enumerate(card_values):
