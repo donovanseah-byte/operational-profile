@@ -842,7 +842,7 @@ tabs = st.tabs(
     [
         "Operating Profile",
         "Retrofit Payback & Charter Analysis",
-        "Operating Profile Summary Report",
+        "Summary Report",
         "Processed Data",
     ]
 )
@@ -925,7 +925,7 @@ with tabs[1]:
     )
 
 with tabs[2]:
-    st.subheader("Operating Profile Summary Report")
+    st.subheader("Summary Report")
     st.caption(
         "Generate the concise one-page A4 report created for this app. It uses the three monthly "
         "operating graphs, the operating-profile summary, fuel-saving basis and payback outcome."
