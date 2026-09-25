@@ -28,7 +28,7 @@ from profile_processing import (
 )
 
 
-st.set_page_config(page_title="Vessel Operating Profile & Payback Analysis", layout="wide")
+st.set_page_config(page_title="Vessel Operating Profile & Payback Calculation", layout="wide")
 
 
 def uploaded_bytes(uploaded_file) -> bytes:
@@ -409,7 +409,7 @@ def render_excel_profile_details(
         use_container_width=True,
     )
     st.caption(
-        "The mean sea-water temperature is calculated from the internally created Data_sum "
+        "The mean sea-water temperature is calculated from the processed data "
         "'Sea Water Temp.' column. "
         "The source is located from the uploaded two-row title 'Sea Water temperature at noon', "
         "regardless of its Excel column position."
@@ -417,8 +417,8 @@ def render_excel_profile_details(
 
 
 def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
-    """Render the M/E fuel and assumed PS3 saving once for the whole analysis."""
-    st.subheader("M/E Fuel Consumption and Assumed PS3 Saving")
+    """Render the M/E fuel and assumed FOC reduction once for the whole analysis."""
+    st.subheader("M/E Fuel Consumption & Estimated FOC Saving")
     grades = list(fuel["total_by_grade"])
     fuel_rows = []
     for report_name, grade_values, equivalent in (
@@ -475,10 +475,10 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
                 "Common basis": "VLSFO equivalent",
                 "Reported Consumption [MT]": fuel["total_raw_mt"],
                 "VLSFO-Equivalent Consumption [MT]": equivalent_consumption,
-                "PS3 [%]": ps3_percent,
-                "FOC saving [VLSFO-eq. MT]": equivalent_consumption * saving_rate,
+                "Assumed FOC Reduction [%]": ps3_percent,
+                "Estimated Fuel Saving [VLSFO-eq. MT]": equivalent_consumption * saving_rate,
                 "VLSFO price [US$/MT]": fuel_price,
-                "Estimated Saving for Uploaded Period [US$]": equivalent_consumption * saving_rate * fuel_price,
+                "Estimated Bunker Cost Saving — Analysis Period [US$]": equivalent_consumption * saving_rate * fuel_price,
             },
         ]
     )
@@ -487,10 +487,10 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
             {
                 "Reported Consumption [MT]": "{:,.3f}",
                 "VLSFO-Equivalent Consumption [MT]": "{:,.3f}",
-                "PS3 [%]": "{:.1f}%",
-                "FOC saving [VLSFO-eq. MT]": "{:,.3f}",
+                "Assumed FOC Reduction [%]": "{:.1f}%",
+                "Estimated Fuel Saving [VLSFO-eq. MT]": "{:,.3f}",
                 "VLSFO price [US$/MT]": "{:,.2f}",
-                "Estimated Saving for Uploaded Period [US$]": "{:,.2f}",
+                "Estimated Bunker Cost Saving — Analysis Period [US$]": "{:,.2f}",
             }
         ),
         hide_index=True,
@@ -605,9 +605,9 @@ def render_payback_analysis(
     fuel_price: float,
 ):
     """Render the payback tab from the existing Profile fuel result."""
-    st.subheader("Fuel-Saving Payback and Charter Outcome")
+    st.subheader("Retrofit Payback & Charter Analysis")
     st.caption(
-        "The app annualises the PS3 fuel saving calculated over the uploaded report period. "
+        "The app annualises the assumed FOC reduction calculated over the analysis period. "
         "CAPEX and other commercial assumptions must be entered manually."
     )
 
@@ -618,7 +618,7 @@ def render_payback_analysis(
         st.error("Payback cannot be calculated because the analysis duration is invalid.")
         return
     if not 0 <= ps3_percent <= 100:
-        st.error("PS3 saving percentage must be between 0% and 100%.")
+        st.error("Assumed FOC reduction must be between 0% and 100%.")
         return
     if fuel_price < 0:
         st.error("Fuel price cannot be negative.")
@@ -630,11 +630,11 @@ def render_payback_analysis(
     calculated_annual_fuel_saving_mt = period_fuel_saving_mt * annualisation_factor
 
     basis_columns = st.columns(4)
-    basis_columns[0].metric("Uploaded report span", f"{analysis_days:,.1f} days")
-    basis_columns[1].metric("Period fuel saving", f"{period_fuel_saving_mt:,.3f} MT")
+    basis_columns[0].metric("Analysis Period", f"{analysis_days:,.1f} days")
+    basis_columns[1].metric("Fuel Saving — Analysis Period", f"{period_fuel_saving_mt:,.3f} MT")
     basis_columns[2].metric("Annualisation factor", f"{annualisation_factor:,.4f}x")
     basis_columns[3].metric(
-        "Annualised assumed fuel saving",
+        "Projected Annual Fuel Saving",
         f"{calculated_annual_fuel_saving_mt:,.3f} MT/year",
     )
 
@@ -695,7 +695,7 @@ def render_payback_analysis(
         )
     with option_columns[1]:
         annual_additional_opex_usd = st.number_input(
-            "Additional annual OPEX [US$]",
+            "Additional Annual OPEX [US$]",
             min_value=0.0,
             value=0.0,
             step=1_000.0,
@@ -709,7 +709,7 @@ def render_payback_analysis(
             key="payback-manual-saving-toggle",
             help=(
                 "Use this only when an approved annual fuel-saving estimate should replace "
-                "the annualised PS3 result."
+                "the projected annual fuel-saving result."
             ),
         )
 
@@ -790,7 +790,7 @@ def render_payback_analysis(
             f"US$ {baseline['Unrecovered CAPEX at charter end [US$]']:,.0f}."
         )
 
-    st.markdown("**Payback and charter-end outcome by scenario**")
+    st.markdown("**Payback & Charter Outcome by Scenario**")
     st.dataframe(
         scenario_summary.style.format(
             {
@@ -858,7 +858,7 @@ def render_payback_analysis(
 
     with st.expander("Show formulas and assumptions"):
         st.code(
-            "Period fuel saving = VLSFO-equivalent consumption x PS3%\n"
+            "Fuel saving — analysis period = VLSFO-equivalent consumption x assumed FOC reduction %\n"
             "Annual fuel saving = period fuel saving x 8,760 / analysis hours\n"
             "Annual gross saving = annual fuel saving x VLSFO reference price\n"
             "Annual net saving = gross saving + avoided CO2 levy benefit - additional OPEX\n"
@@ -867,12 +867,12 @@ def render_payback_analysis(
             "Unrecovered CAPEX = max(CAPEX - total charter net savings, 0)"
         )
         st.caption(
-            "The result inherits the app's VLSFO-equivalent fuel conversion and PS3 saving assumption. "
+            "The result inherits the app's VLSFO-equivalent fuel conversion and assumed FOC reduction. "
             "It is an estimate, not a measured retrofit saving."
         )
 
 
-st.title("Vessel Operating Profile & Payback Analysis")
+st.title("Vessel Operating Profile & Payback Calculation")
 st.caption(
     "Upload Noon, Departure and Arrival reports. Files are identified from their two-row column "
     "titles - not fixed Excel column positions. The app builds operating-hour profiles, a monthly "
@@ -917,7 +917,7 @@ except VesselValidationError as exc:
 st.success(f"Vessel validation passed: {detected_vessel}")
 
 with st.sidebar:
-    st.header("Operating-profile methodology")
+    st.header("Operating Profile Settings")
     st.info(
         "Excel-compatible fixed-bin settings\n\n"
         "Draft: 7-16 m\n\n"
@@ -931,7 +931,7 @@ with st.sidebar:
         value=known_imo.get(detected_vessel, ""),
         help="The three downloaded report formats do not contain an IMO-number field, so confirm this once per run.",
     )
-    ps3_percent = st.number_input("PS3 saving assumption (%)", 0.0, 100.0, 1.0, 0.1)
+    ps3_percent = st.number_input("Assumed FOC Reduction [%]", 0.0, 100.0, 1.0, 0.1)
     fuel_price = st.number_input(
         "VLSFO reference price (US$/MT)", 0.0, 10_000.0, 539.0, 1.0
     )
@@ -952,128 +952,47 @@ if not temperature_audit["valid"]:
     st.error(temperature_audit["message"])
     st.stop()
 
-st.subheader("Calculation Input Summary")
+st.subheader("Analysis Summary")
 metrics = st.columns(5)
 valid_duration = segments.loc[segments["duration_hours"].gt(0), "duration_hours"].sum()
-metrics[0].metric("Noon records loaded", f"{len(segments):,}")
-metrics[1].metric("Reported Noon propelling hours", f"{valid_duration:,.1f}")
-metrics[2].metric("Eligible speed-profile hours", f"{speed_profile.total_hours:,.1f}")
-metrics[3].metric("Eligible M/E-profile hours", f"{power_profile.total_hours:,.1f}")
+metrics[0].metric("Noon Reports Analysed", f"{len(segments):,}")
+metrics[1].metric("Total Propelling Hours", f"{valid_duration:,.1f}")
+metrics[2].metric("Speed–Draft Profile Hours", f"{speed_profile.total_hours:,.1f}")
+metrics[3].metric("M/E Output–Draft Profile Hours", f"{power_profile.total_hours:,.1f}")
 metrics[4].metric(
-    "Share within displayed M/E bands",
+    "M/E Profile Coverage",
     f"{power_profile.percent.to_numpy().sum():.2f}%",
 )
 
 tabs = st.tabs(
     [
-        "Data Quality",
-        "Speed-Draft Operating Profile",
-        "M/E Output-Draft Operating Profile",
-        "Monthly Operating Summary",
-        "M/E Fuel & PS3 Saving",
-        "Payback & Charter Outcome",
-        "Internal Data_sum",
+        "Operating Profile",
+        "Retrofit Payback & Charter Analysis",
+        "Processed Data",
     ]
 )
 
 with tabs[0]:
-    st.subheader("Data Quality Results")
-    if temperature_audit["quality_warnings"]:
-        st.warning(
-            temperature_audit["message"] + " " + " ".join(temperature_audit["quality_warnings"])
-        )
-    else:
-        st.success(temperature_audit["message"])
-    with st.expander("Data_sum sea-water-temperature calculation audit", expanded=True):
-        temperature_check = pd.DataFrame(
-            [
-                {
-                    "Calculation source": temperature_audit["source_column"],
-                    "Data_sum header": temperature_audit["source_header"],
-                    "Uploaded source column": temperature_audit["upstream_column"],
-                    "Uploaded source header": temperature_audit["upstream_header"],
-                    "Numeric readings": temperature_audit["numeric_count"],
-                    "Zero readings included": temperature_audit["zero_count"],
-                    "Sum": temperature_audit["sum_value"],
-                    "Average": temperature_audit["average_value"],
-                    "Minimum": temperature_audit["minimum_value"],
-                    "Maximum": temperature_audit["maximum_value"],
-                    "Outside -2 to 40 deg C": temperature_audit["out_of_range_count"],
-                }
-            ]
-        )
-        st.dataframe(
-            temperature_check.style.format(
-                {
-                    "Sum": "{:,.1f}",
-                    "Average": "{:.6f}",
-                    "Minimum": "{:.1f}",
-                    "Maximum": "{:.1f}",
-                }
-            ),
-            hide_index=True,
-            use_container_width=True,
-        )
-        st.code(
-            f"{temperature_audit['sum_value']:,.1f} / "
-            f"{temperature_audit['numeric_count']:,} = "
-            f"{temperature_audit['average_value']:.6f}"
-        )
-    check_columns = st.columns(2)
-    with check_columns[0]:
-        st.metric(
-            "Share of eligible speed hours inside displayed bands",
-            f"{speed_profile.coverage:.2%}",
-        )
-        speed_excluded = segments.loc[~segments["speed_included"], "speed_exclusion"].value_counts()
-        st.write("Noon rows excluded from speed profile")
-        st.dataframe(
-            speed_excluded.rename_axis("Reason").reset_index(name="Rows"),
-            hide_index=True,
-            use_container_width=True,
-        )
-    with check_columns[1]:
-        st.metric(
-            "Share of eligible M/E hours inside displayed bands",
-            f"{power_profile.coverage:.2%}",
-        )
-        power_excluded = segments.loc[~segments["power_included"], "power_exclusion"].value_counts()
-        st.write("Noon rows excluded from M/E output profile")
-        st.dataframe(
-            power_excluded.rename_axis("Reason").reset_index(name="Rows"),
-            hide_index=True,
-            use_container_width=True,
-        )
-    missing_draft = segments[segments["draft_m"].isna()]
-    if not missing_draft.empty:
-        st.warning(
-            f"{len(missing_draft)} Noon rows occur before the first usable Departure/Arrival draft state. "
-            "They are excluded in the same way as the Excel workbook."
-        )
-    outside_power = power_profile.total_hours - power_profile.hours.to_numpy().sum()
-    if outside_power > 0.001:
-        st.warning(
-            f"{outside_power:,.1f} denominator hours fall outside the fixed 0-<23,000 kW table. "
-            "They remain in the denominator, matching the Excel formula."
-        )
-    high_working_ratio = monthly[monthly["working_ratio_pct"] > 100.5] if not monthly.empty else pd.DataFrame()
-    if not high_working_ratio.empty:
-        st.warning("Some monthly working ratios exceed 100%; inspect overlapping or duplicate report periods.")
+    st.subheader("Operating Profile")
+    st.caption(
+        "This section combines the Speed–Draft operating profile, M/E Output–Draft operating profile, "
+        "monthly operating summary and M/E fuel-saving estimate in one place."
+    )
 
-with tabs[1]:
+    st.markdown("**Speed–Draft Operating Profile**")
     st.caption(
         "Locked Excel method: draft rows start at 7-16 m and speed columns start at 9-24 kn. "
         "A label such as 9 means the 9-<10 kn band. Each cell uses the Excel SUMIFS denominator logic."
     )
     heatmap(
         speed_profile,
-        "Distribution of Propelling Hours by Speed and Draft",
-        "Reported speed band start [kn]",
+        "Propelling Hours Distribution — Speed vs Draft",
+        "Speed [kn]",
         "speed-draft-heatmap",
     )
     speed_table = render_readable_profile_table(
         speed_profile,
-        "Speed band start [kn]",
+        "Speed [kn]",
         [
             ("Speed bands starting at 9-16 kn", [str(value) for value in range(9, 17)]),
             ("Speed bands starting at 17-24 kn", [str(value) for value in range(17, 25)]),
@@ -1087,13 +1006,14 @@ with tabs[1]:
     )
     render_excel_profile_details(
         speed_profile,
-        "Speed-Draft Profile",
+        "Speed–Draft Operating Profile",
         detected_vessel,
         imo_number,
         overall,
     )
 
-with tabs[2]:
+    st.divider()
+    st.markdown("**M/E Output–Draft Operating Profile**")
     st.caption(
         "Locked Excel method: draft rows start at 7-16 m and M/E output columns start at "
         "0-22,000 kW. A label such as 1000 means the 1,000-<2,000 kW band. "
@@ -1101,13 +1021,13 @@ with tabs[2]:
     )
     heatmap(
         power_profile,
-        "Distribution of Propelling Hours by M/E Output and Draft",
-        "Reported M/E output band start [kW]",
+        "Propelling Hours Distribution — M/E Output vs Draft",
+        "M/E Output [kW]",
         "me-output-draft-heatmap",
     )
     power_table = render_readable_profile_table(
         power_profile,
-        "M/E output band start [kW]",
+        "M/E Output [kW]",
         [
             ("M/E output bands starting at 0-7,000 kW", [str(value) for value in range(0, 8_000, 1_000)]),
             ("M/E output bands starting at 8,000-15,000 kW", [str(value) for value in range(8_000, 16_000, 1_000)]),
@@ -1122,15 +1042,16 @@ with tabs[2]:
     )
     render_excel_profile_details(
         power_profile,
-        "M/E Output-Draft Profile",
+        "M/E Output–Draft Operating Profile",
         detected_vessel,
         imo_number,
         overall,
     )
 
-with tabs[3]:
+    st.divider()
+    st.markdown("**Monthly Operating Summary**")
     st.caption(
-        "This operating summary is calculated from the internal Data_sum and supplies the three charts. "
+        "This operating summary is calculated from the processed data and supplies the three charts. "
         "It runs from the earliest to latest Noon/Departure/Arrival month."
     )
     if monthly.empty:
@@ -1145,14 +1066,14 @@ with tabs[3]:
             "text/csv",
         )
 
-with tabs[4]:
+    st.divider()
     render_fuel_summary(
         fuel=fuel,
         ps3_percent=ps3_percent,
         fuel_price=fuel_price,
     )
 
-with tabs[5]:
+with tabs[1]:
     render_payback_analysis(
         overall=overall,
         fuel=fuel,
@@ -1160,15 +1081,15 @@ with tabs[5]:
         fuel_price=fuel_price,
     )
 
-with tabs[6]:
+with tabs[2]:
     st.caption(
-        "This is the internally created Data_sum calculation-input table. The operating profiles, "
+        "This is the processed calculation-input table. The operating profiles, "
         "monthly summary and charts are calculated from these records."
     )
     displayed_data_sum = excel_data_sum_display(data_sum, imo_number)
     st.dataframe(displayed_data_sum, hide_index=True, use_container_width=True)
     st.download_button(
-        "Download internal Data_sum CSV",
+        "Download Processed Data CSV",
         dataframe_csv(displayed_data_sum),
         "internal_data_sum.csv",
         "text/csv",
