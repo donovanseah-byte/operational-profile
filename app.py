@@ -286,7 +286,9 @@ def render_combined_operating_profile_summary(
 
 
 
-def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
+def render_fuel_summary(
+    fuel: dict, ps3_percent: float, fuel_price: float, overall: dict, payback: dict | None
+):
     """Render one concise fuel-saving summary with detailed fuel data collapsed below."""
     st.subheader("M/E Fuel Consumption & Estimated FOC Saving")
 
@@ -294,7 +296,11 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
     raw_consumption = float(fuel.get("total_raw_mt", 0.0) or 0.0)
     saving_rate = ps3_percent / 100
     period_saving = equivalent_consumption * saving_rate
-    period_cost_saving = period_saving * fuel_price
+    analysis_hours = float(overall.get("total_hours", 0.0) or 0.0)
+    annual_factor = (365 * 24 / analysis_hours) if analysis_hours > 0 else float("nan")
+    annual_cost_saving = period_saving * annual_factor * fuel_price
+    if payback and payback.get("annual_gross_saving_usd") is not None:
+        annual_cost_saving = float(payback["annual_gross_saving_usd"])
 
     summary_table = pd.DataFrame(
         [
@@ -302,7 +308,7 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
                 "VLSFO-Equivalent M/E Fuel [MT]": equivalent_consumption,
                 "Assumed Period FOC Reduction [%]": ps3_percent,
                 "Estimated Fuel Saving - Analysis Period [MT]": period_saving,
-                "Estimated Bunker Cost Saving - Analysis Period [US$]": period_cost_saving,
+                "FOC Save Cost Per Year [US$]": annual_cost_saving,
             }
         ]
     )
@@ -312,8 +318,8 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
                 "VLSFO-Equivalent M/E Fuel [MT]": "{:,.3f}",
                 "Assumed Period FOC Reduction [%]": "{:.3f}%",
                 "Estimated Fuel Saving - Analysis Period [MT]": "{:,.3f}",
-                "Estimated Bunker Cost Saving - Analysis Period [US$]": (
-                    lambda value: f"US$ {math.ceil(value):,}"
+                "FOC Save Cost Per Year [US$]": (
+                    lambda value: f"US$ {math.ceil(value):,}" if math.isfinite(value) else "N/A"
                 ),
             }
         ),
@@ -856,6 +862,14 @@ tabs = st.tabs(
     ]
 )
 
+with tabs[1]:
+    payback_result = render_payback_analysis(
+        overall=overall,
+        fuel=fuel,
+        ps3_percent=ps3_percent,
+        fuel_price=fuel_price,
+    )
+
 with tabs[0]:
     st.caption(
         "The complete Speed–Draft and M/E Output–Draft operating profiles are shown below. "
@@ -923,14 +937,8 @@ with tabs[0]:
         fuel=fuel,
         ps3_percent=ps3_percent,
         fuel_price=fuel_price,
-    )
-
-with tabs[1]:
-    payback_result = render_payback_analysis(
         overall=overall,
-        fuel=fuel,
-        ps3_percent=ps3_percent,
-        fuel_price=fuel_price,
+        payback=payback_result,
     )
 
 with tabs[2]:
