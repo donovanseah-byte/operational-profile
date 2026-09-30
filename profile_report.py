@@ -531,6 +531,11 @@ def build_a4_profile_report(
     annual_cost_saving = period_saving * annual_factor * fuel_price
     if payback and payback.get("annual_gross_saving_usd") is not None:
         annual_cost_saving = float(payback["annual_gross_saving_usd"])
+    displayed_annual_cost_saving = (
+        math.ceil(annual_cost_saving)
+        if math.isfinite(annual_cost_saving)
+        else annual_cost_saving
+    )
 
     section_y = table_bottom - 18
     _draw_section_title(pdf, "M/E fuel consumption and assumed saving", margin, section_y)
@@ -538,7 +543,7 @@ def build_a4_profile_report(
         ("Fuel Oil Consumption", _number(raw_fuel, 2, " t")),
         ("Fuel Oil Consumption (VLSFO Converted)", _number(equivalent_fuel, 2, " t")),
         ("Assumed FOC Saving", _number(period_saving, 3, " t equiv.")),
-        ("FOC Save Cost Per Year", f"US$ {_number(annual_cost_saving, 0)}/year"),
+        ("FOC Save Cost Per Year", f"US$ {_number(displayed_annual_cost_saving, 0)}/year"),
     ]
     table_bottom = _draw_two_column_rows(pdf, fuel_rows, margin, section_y - 13, content_width)
 
