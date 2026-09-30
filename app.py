@@ -312,7 +312,9 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
                 "VLSFO-Equivalent M/E Fuel [MT]": "{:,.3f}",
                 "Assumed Period FOC Reduction [%]": "{:.3f}%",
                 "Estimated Fuel Saving - Analysis Period [MT]": "{:,.3f}",
-                "Estimated Bunker Cost Saving - Analysis Period [US$]": "US$ {:,.2f}",
+                "Estimated Bunker Cost Saving - Analysis Period [US$]": (
+                    lambda value: f"US$ {math.ceil(value):,}"
+                ),
             }
         ),
         hide_index=True,
