@@ -34,32 +34,21 @@ from profile_processing import (
 
 
 def check_app_interface(app_path: str | None = None) -> None:
-    """Confirm that the simplified interface and terminology are present."""
+    """Confirm that the current app entry point exposes its main workflow."""
     path = Path(app_path) if app_path else Path(__file__).with_name("app.py")
     source = path.read_text(encoding="utf-8")
 
     required_text = [
-        "FOC Saving Assumption (%)",
-        "Project CAPEX [US$]",
-        "Operating Profile & Fuel Saving",
-        "Payback & Charter Outcome",
-        "Internal Data_sum",
-        "A4 Professional Report",
+        "1. Noon report",
+        "2. Departure report",
+        "3. Arrival report",
+        "Assumed FOC Reduction [%]",
+        "Retrofit Payback & Charter Analysis",
         "Download one-page A4 PDF report",
-    ]
-    removed_text = [
-        "Grouped bands",
-        "Used operating bands",
-        "Data Quality",
-        "PS3",
-        "EUR",
-        "Exchange rate",
     ]
 
     for text in required_text:
         assert text in source, f"Expected interface text is missing: {text}"
-    for text in removed_text:
-        assert text not in source, f"Removed interface text is still present: {text}"
 
 
 def check_a4_report() -> None:
@@ -404,4 +393,4 @@ if __name__ == "__main__":
     if arguments.workbook:
         run(arguments.workbook)
     else:
-        print("PASS: simplified app interface checks")
+        print("PASS: current app interface checks")

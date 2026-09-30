@@ -310,9 +310,11 @@ def render_fuel_summary(fuel: dict, ps3_percent: float, fuel_price: float):
         summary_table.style.format(
             {
                 "VLSFO-Equivalent M/E Fuel [MT]": "{:,.3f}",
-                "Assumed Period FOC Reduction [%]": "{:.1f}%",
+                "Assumed Period FOC Reduction [%]": "{:.3f}%",
                 "Estimated Fuel Saving - Analysis Period [MT]": "{:,.3f}",
-                "Estimated Bunker Cost Saving - Analysis Period [US$]": "US$ {:,.2f}",
+                "Estimated Bunker Cost Saving - Analysis Period [US$]": (
+                    lambda value: f"US$ {math.ceil(value):,}"
+                ),
             }
         ),
         hide_index=True,
@@ -817,7 +819,14 @@ with st.sidebar:
         value=known_imo.get(detected_vessel, ""),
         help="The three downloaded report formats do not contain an IMO-number field, so confirm this once per run.",
     )
-    ps3_percent = st.number_input("Assumed FOC Reduction [%]", 0.0, 100.0, 1.0, 0.1)
+    ps3_percent = st.number_input(
+        "Assumed FOC Reduction [%]",
+        min_value=0.0,
+        max_value=100.0,
+        value=1.0,
+        step=0.001,
+        format="%.3f",
+    )
     fuel_price = st.number_input(
         "VLSFO reference price (US$/MT)", 0.0, 10_000.0, 539.0, 1.0
     )

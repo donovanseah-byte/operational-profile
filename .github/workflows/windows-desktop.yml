@@ -1,0 +1,55 @@
+name: Build offline Windows app
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt "pyinstaller>=6.20,<7"
+      - name: Check processing and PDF report
+        run: python smoke_test.py
+      - name: Check Streamlit initial screen
+        run: python -c "from streamlit.testing.v1 import AppTest; app = AppTest.from_file('app.py').run(); assert not app.exception, [e.message for e in app.exception]"
+      - name: Bundle executable
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --onedir --name VesselOperatingProfile `
+            --collect-all streamlit --collect-all plotly --collect-all reportlab `
+            --collect-all openpyxl --hidden-import profile_processing `
+            --hidden-import profile_report --add-data "app.py:." desktop_launcher.py
+      - name: Check executable starts locally
+        shell: pwsh
+        run: |
+          $env:OPERATING_PROFILE_NO_BROWSER = '1'
+          $env:OPERATING_PROFILE_PORT = '18501'
+          $process = Start-Process -FilePath "dist/VesselOperatingProfile/VesselOperatingProfile.exe" -PassThru
+          try {
+            $ready = $false
+            for ($i = 0; $i -lt 60; $i++) {
+              if ($process.HasExited) { throw "The app exited with code $($process.ExitCode)." }
+              try {
+                $response = Invoke-WebRequest -Uri 'http://127.0.0.1:18501/_stcore/health' -TimeoutSec 2
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch { Start-Sleep -Seconds 2 }
+            }
+            if (-not $ready) { throw 'The packaged app did not become ready.' }
+          } finally {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          }
+      - name: Make downloadable ZIP
+        shell: pwsh
+        run: Compress-Archive -Path 'dist/VesselOperatingProfile' -DestinationPath 'VesselOperatingProfile-Windows.zip'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VesselOperatingProfile-Windows
+          path: VesselOperatingProfile-Windows.zip
+          if-no-files-found: error
