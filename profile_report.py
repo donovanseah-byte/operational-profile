@@ -451,7 +451,7 @@ def build_a4_profile_report(
         ("Period covered", _number(analysis_days, 1, " days")),
         ("Noon reports loaded", f"{int(noon_records):,}"),
         ("M/E propelling days", _number(overall.get("propelling_hours") / 24, 1, " days")),
-        ("Assumed fuel saving", _number(foc_saving_percent, 2, "%")),
+        ("Assumed fuel saving", _number(foc_saving_percent, 3, "%")),
     ]
     for index, (label, value) in enumerate(card_values):
         _draw_card(
@@ -537,7 +537,7 @@ def build_a4_profile_report(
     fuel_rows = [
         ("Fuel Oil Consumption", _number(raw_fuel, 2, " t")),
         ("Fuel Oil Consumption (VLSFO Converted)", _number(equivalent_fuel, 2, " t")),
-        ("Assumed FOC Saving", _number(period_saving, 2, " t equiv.")),
+        ("Assumed FOC Saving", _number(period_saving, 3, " t equiv.")),
         ("FOC Save Cost Per Year", f"US$ {_number(annual_cost_saving, 0)}/year"),
     ]
     table_bottom = _draw_two_column_rows(pdf, fuel_rows, margin, section_y - 13, content_width)
